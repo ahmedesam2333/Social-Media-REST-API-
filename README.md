@@ -34,13 +34,10 @@
 
 ## Features
 
-- Express app bootstrapped with TypeScript — global middleware stack: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP)
-- Typed exception hierarchy — `ApplicationException` base class with `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
-- Global error handler middleware returning structured JSON with `err_message`, `stack`, and `cause`
-- Invalid route handler returning a structured `404` for all unmatched routes
-- Auth module scaffold — `POST /signup` and `POST /login` wired to a typed `AuthenticationService` class
-- Zod strict validation schemas — strong password regex, Egyptian phone regex, unknown fields rejected at boundary
-- `ISignupBodyInputsDto` typed interface — contract between validation and service layers
+- 🏗️ Express + TypeScript bootstrap with global middleware (CORS, Helmet, rate limiting, JSON parsing)
+- 🚨 Typed exception hierarchy with a global error handler and structured JSON error responses
+- 🔐 Auth module with typed service layer, Zod strict validation, and DTO interfaces
+- 🛡️ Input validation via Zod — strict schemas with strong password and phone rules enforced at the boundary
 
 ---
 
@@ -85,12 +82,12 @@ SOCIAL-MEDIA-REST-API/
 
 ## Security Design
 
-- **Helmet** — sets secure HTTP headers on every response
-- **CORS** — enabled globally via `cors()` middleware
-- **Rate Limiting** — `express-rate-limit` caps each IP at 200 requests per hour; excess requests return `429 Too Many Requests` with a JSON error body
-- **Zod** — strict runtime schema validation on every incoming request body; unknown fields rejected via `z.strictObject()`
-- **Password policy** — min 8 chars, uppercase, lowercase, digit, and special character enforced via regex
-- **Phone validation** — Egyptian numbers only (`010 / 011 / 012 / 015`) enforced via regex
+- **Helmet** — secure HTTP headers on every response
+- **CORS** — enabled globally
+- **Rate Limiting** — 200 requests per hour per IP; excess returns `429` with a JSON error body
+- **Zod** — strict schema validation on every request; unknown fields rejected at the boundary
+- **Password policy** — min 8 chars, uppercase, lowercase, digit, and special character required
+- **Phone validation** — Egyptian numbers only (`010 / 011 / 012 / 015`)
 
 ---
 
@@ -98,16 +95,70 @@ SOCIAL-MEDIA-REST-API/
 
 **Base URL:** `http://localhost:5000`
 
-> All routes return `400 Validation Error` on invalid input.
+> 🔒 Protected routes require `Authorization: Bearer <token>`
+>
+> All routes return `400 Validation Error` on invalid input — omitted per endpoint for brevity.
+
+---
 
 ### Auth — `/auth`
 
-| Method | Route | Description | Auth |
-|---|---|---|---|
-| `POST` | `/auth/signup` | Register a new user | — |
-| `POST` | `/auth/login` | Login with credentials | — |
+<details>
+<summary><code>POST</code> &nbsp; <code>/auth/signup</code> &nbsp;—&nbsp; Register a new user</summary>
 
-> More endpoints added as features are built.
+<br/>
+
+**Body**
+```json
+{
+  "username": "ahmed_essam",
+  "email": "ahmed@example.com",
+  "password": "Ahmed@1234",
+  "phone": "01012345678"
+}
+```
+
+**Validation**
+
+| Field | Rules |
+|---|---|
+| `username` | Required · 3–20 chars |
+| `email` | Required · valid email |
+| `password` | Required · min 8 chars · uppercase, lowercase, digit, special char |
+| `phone` | Required · Egyptian numbers only: `010 / 011 / 012 / 015` |
+
+**Responses**
+
+| Status | Description |
+|---|---|
+| `201` | User registered successfully |
+| `400` | Validation error |
+
+</details>
+
+---
+
+<details>
+<summary><code>POST</code> &nbsp; <code>/auth/login</code> &nbsp;—&nbsp; Login with credentials</summary>
+
+<br/>
+
+**Body**
+```json
+{
+  "email": "ahmed@example.com",
+  "password": "Ahmed@1234"
+}
+```
+
+**Responses**
+
+| Status | Description |
+|---|---|
+| `200` | Login successful |
+| `400` | Validation error |
+
+</details>
 
 ---
 
@@ -120,22 +171,15 @@ SOCIAL-MEDIA-REST-API/
 ## 📍 Checkpoint — What's Done
 
 > **Last updated:** Initial project scaffold
-> Use this section as context when resuming — share it at the start of your next prompt so nothing needs re-explaining.
+> Paste this section at the start of your next prompt to resume without re-explaining anything.
 
-**Project Bootstrap**
-- Express + TypeScript fully wired; `dotenv` loads at entry point; typed `bootstrap()` function
-- Global middleware: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP)
-- Root route, invalid route handler (structured `404`), and global error handler all in place
-
-**Error Handling**
-- Base `ApplicationException` class with `statusCode`, `message`, `cause`
-- `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
-- `globalErrorHandling` Express middleware with structured JSON response
-
-**Auth Module**
-- `POST /signup` and `POST /login` routes wired to `AuthenticationService`
-- Zod strict schemas: `username` (3–20 chars), `email`, strong `password` regex, Egyptian `phone` regex
-- `ISignupBodyInputsDto` typed interface; service handlers are class methods with full typing
+- Express + TypeScript fully bootstrapped; global middleware stack in place; `dotenv` loads at entry point
+- Typed exception hierarchy: `ApplicationException`, `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
+- `globalErrorHandling` middleware with structured JSON response (`err_message`, `stack`, `cause`)
+- Invalid route handler — structured `404` for all unmatched routes
+- Auth module: `POST /signup` and `POST /login` wired to `AuthenticationService` class
+- Zod strict schemas for signup: `username`, `email`, strong `password` regex, Egyptian `phone` regex
+- `ISignupBodyInputsDto` typed interface between validation and service layers
 - No DB connection yet — service layer returns scaffold responses
 
 ---
