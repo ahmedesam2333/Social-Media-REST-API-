@@ -22,7 +22,7 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Security Design](#security-design)
@@ -32,17 +32,29 @@
 
 ---
 
-## Overview
+## Features
 
-A social media REST API built from the ground up with **TypeScript**, **Node.js**, **Express.js**, and **MongoDB**. Every module is self-contained, every input is validated at runtime with **Zod**, and the codebase is fully typed for reliability and developer confidence.
+### 🏗️ Application Bootstrap
 
-**Core flow so far:**
+- Express app fully initialized with TypeScript — all handlers typed via `Request`, `Response`, `NextFunction`
+- Global middleware stack: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP with JSON error body on `429`)
+- Root health-check route returning a welcome JSON response
+- Invalid route handler — catches all unmatched routes and returns a structured `404` JSON response
+- `dotenv` loaded at entry point before any module initializes
 
-1. Server bootstraps with CORS, Helmet, rate limiting, and JSON parsing applied globally
-2. Requests are routed into self-contained modules (`auth`, with more to follow)
-3. All inputs are validated via Zod schemas before reaching the service layer
-4. A typed exception hierarchy handles errors uniformly across the entire application
-5. Invalid routes return a structured `404` — no silent failures
+### 🚨 Error Handling Architecture
+
+- `ApplicationException` — base typed exception class with `statusCode`, `message`, and `cause` support
+- Semantic exception subclasses: `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
+- `globalErrorHandling` middleware — returns structured JSON with `err_message`, `stack`, and `cause` on every unhandled throw
+
+### 🔐 Auth Module — `/auth`
+
+- `POST /auth/signup` — accepts `username`, `email`, `password`, `phone` with full Zod strict validation
+- `POST /auth/login` — scaffold route wired and ready for business logic
+- Zod strict schemas (`z.strictObject`) — unknown fields rejected at the boundary; password enforced with uppercase, lowercase, digit, and special character regex; phone restricted to Egyptian numbers (`010 / 011 / 012 / 015`)
+- `ISignupBodyInputsDto` interface — typed contract between validation layer and service layer
+- `AuthenticationService` class — encapsulates all auth handlers as typed class methods
 
 ---
 
@@ -94,9 +106,9 @@ SOCIAL-MEDIA-REST-API/
 - **Helmet** — sets secure HTTP headers on every response
 - **CORS** — enabled globally via `cors()` middleware
 - **Rate Limiting** — `express-rate-limit` caps each IP at 200 requests per hour; excess requests return `429 Too Many Requests` with a JSON error body
-- **Zod** — strict runtime schema validation on every incoming request body; unknown fields are rejected via `z.strictObject()`
-- **Password policy** — enforced at validation layer: min 8 chars, uppercase, lowercase, digit, and special character required
-- **Phone validation** — Egyptian numbers only (`010 / 011 / 012 / 015`) enforced via regex at the schema level
+- **Zod** — strict runtime schema validation on every incoming request body; unknown fields rejected via `z.strictObject()`
+- **Password policy** — min 8 chars, uppercase, lowercase, digit, and special character enforced via regex at the schema level
+- **Phone validation** — Egyptian numbers only (`010 / 011 / 012 / 015`) enforced via regex
 
 > JWT, bcrypt, AES encryption, and OTP verification — coming in the next checkpoint.
 
@@ -115,7 +127,7 @@ SOCIAL-MEDIA-REST-API/
 | `POST` | `/auth/signup` | Register a new user | — |
 | `POST` | `/auth/login` | Login with credentials | — |
 
-> More endpoints coming as features are added.
+> More endpoints added as features are built.
 
 ---
 
@@ -128,26 +140,35 @@ SOCIAL-MEDIA-REST-API/
 ## 📍 Checkpoint — What's Done
 
 > **Last updated:** Initial project scaffold
+> Use this section as context when resuming — share it at the start of your next prompt so nothing needs re-explaining.
 
 ### ✅ Completed
 
 **Project Bootstrap**
-- Express app initialized with full TypeScript configuration (`tsconfig.json`, typed `Request`/`Response` throughout)
-- Global middleware stack: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP)
-- Entry point (`index.ts`) loads `dotenv` and calls `bootstrap()`
-- Invalid route handler — catches all unmatched routes with a structured `404` JSON response
-- Global async error handler middleware with typed `IError` interface
+- Express + TypeScript fully wired; `dotenv` loads at entry point; typed `bootstrap()` function
+- Global middleware: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP)
+- Root route, invalid route handler (structured `404`), and global error handler all in place
 
-**Error Handling Architecture**
-- `ApplicationException` — base typed exception class with `statusCode`, `message`, and `cause`
-- `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409) — all extend base
-- `globalErrorHandling` middleware returns structured JSON with `err_message`, `stack`, and `cause`
+**Error Handling**
+- Base `ApplicationException` class with `statusCode`, `message`, `cause`
+- `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
+- `globalErrorHandling` Express middleware with structured JSON response
 
-**Auth Module — `/auth`**
-- `auth.controller.ts` — Router with `POST /signup` and `POST /login` wired to service
-- `auth.service.ts` — `AuthenticationService` class with `signup` and `login` handlers (scaffold, no DB yet)
-- `auth.dto.ts` — `ISignupBodyInputsDto` interface (`username`, `email`, `password`)
-- `auth.validation.ts` — Zod strict schemas: `username` (3–20 chars), `email`, `password` (strong regex), `phone` (Egyptian numbers)
+**Auth Module**
+- `POST /signup` and `POST /login` routes wired to `AuthenticationService`
+- Zod strict schemas: `username` (3–20 chars), `email`, strong `password` regex, Egyptian `phone` regex
+- `ISignupBodyInputsDto` typed interface; service handlers are class methods with full `Request`/`Response` typing
+- No DB connection yet — service layer returns scaffold responses
+
+### 🔜 Not Started Yet
+- Zod validation middleware (schema → route wiring)
+- MongoDB connection + Mongoose models (User, Token)
+- Auth logic: signup with OTP email verification, login with JWT, Google OAuth
+- Password hashing (bcrypt), reuse prevention, AES field encryption, token blacklist
+- User module, Post module
+- File uploads (Multer + Cloudinary)
+- Email service (Nodemailer + EventEmitter)
+- Deployment (AWS EC2, Nginx, PM2)
 
 ---
 
