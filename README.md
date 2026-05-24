@@ -25,7 +25,6 @@
 - [Overview](#overview)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
-- [Database Models](#database-models)
 - [Security Design](#security-design)
 - [API Reference](#api-reference)
 - [Deployment](#deployment)
@@ -35,15 +34,15 @@
 
 ## Overview
 
-A feature-rich social media REST API built from the ground up with **TypeScript**, **Node.js**, **Express.js**, and **MongoDB**. The project is architected for scalability — every module is self-contained, every input is validated, and every response is typed.
+A social media REST API built from the ground up with **TypeScript**, **Node.js**, **Express.js**, and **MongoDB**. Every module is self-contained, every input is validated at runtime with **Zod**, and the codebase is fully typed for reliability and developer confidence.
 
-**Core flow:**
+**Core flow so far:**
 
-1. A user registers and verifies their email via OTP
-2. They can create a profile, publish posts, and interact with others
-3. Authentication is handled via JWT access and refresh tokens
-4. Admins have elevated controls for moderation and account management
-5. The codebase is fully typed with TypeScript for reliability and developer confidence
+1. Server bootstraps with CORS, Helmet, rate limiting, and JSON parsing applied globally
+2. Requests are routed into self-contained modules (`auth`, with more to follow)
+3. All inputs are validated via Zod schemas before reaching the service layer
+4. A typed exception hierarchy handles errors uniformly across the entire application
+5. Invalid routes return a structured `404` — no silent failures
 
 ---
 
@@ -51,75 +50,38 @@ A feature-rich social media REST API built from the ground up with **TypeScript*
 
 | Layer | Technology |
 |---|---|
-| Language | **TypeScript** |
+| Language | TypeScript |
 | Runtime | Node.js |
 | Framework | Express.js |
 | Database | MongoDB + Mongoose |
-| Validation | **Zod** |
-| Auth | JWT (access & refresh tokens), Google OAuth |
-| Security | bcryptjs, CryptoJS (AES), CORS, Helmet, express-rate-limit |
-| Email | Nodemailer + Node EventEmitter |
-| File Upload | Multer + Cloudinary |
-| OTP | nanoid (`customAlphabet`) |
+| Validation | Zod |
+| Auth | JWT · Google OAuth *(upcoming)* |
+| Security | bcryptjs · CryptoJS (AES) · CORS · Helmet · express-rate-limit |
+| Email | Nodemailer + Node EventEmitter *(upcoming)* |
+| File Upload | Multer + Cloudinary *(upcoming)* |
 | Config | dotenv |
-| Logging | Morgan |
 
 ---
 
 ## Project Structure
 
 ```
-SOCIAL-MEDIA-APP/
+SOCIAL-MEDIA-REST-API/
 ├── src/
 │   ├── modules/
-│   │   ├── auth/
-│   │   │   ├── auth.controller.ts
-│   │   │   ├── auth.routes.ts
-│   │   │   └── auth.validation.ts
-│   │   ├── user/
-│   │   │   ├── user.controller.ts
-│   │   │   ├── user.routes.ts
-│   │   │   ├── user.validation.ts
-│   │   │   └── user.authorization.ts
-│   │   └── post/
-│   │       ├── post.controller.ts
-│   │       ├── post.routes.ts
-│   │       └── post.validation.ts
-│   ├── DB/
-│   │   ├── models/
-│   │   │   ├── user.model.ts
-│   │   │   ├── token.model.ts
-│   │   │   └── post.model.ts
-│   │   ├── db.service.ts
-│   │   └── connection.ts
-│   ├── middleware/
-│   │   ├── auth.middleware.ts
-│   │   └── validation.middleware.ts
-│   ├── types/
-│   │   ├── express.d.ts
-│   │   ├── env.d.ts
-│   │   └── index.ts
-│   └── utils/
-│       ├── response.ts
-│       ├── multer/
-│       │   ├── local.multer.ts
-│       │   ├── cloud.multer.ts
-│       │   └── cloudinary.ts
-│       ├── email/
-│       │   ├── send.email.ts
-│       │   └── templates/
-│       │       └── email.template.ts
-│       ├── events/
-│       │   └── email.event.ts
-│       └── security/
-│           ├── hash.security.ts
-│           ├── encrypt.security.ts
-│           ├── otp.security.ts
-│           └── token.security.ts
-│   ├── app.controller.ts
-│   └── index.ts
+│   │   └── auth/
+│   │       ├── auth.controller.ts     # Route definitions
+│   │       ├── auth.service.ts        # Business logic
+│   │       ├── auth.validation.ts     # Zod schemas
+│   │       └── auth.dto.ts            # Input type interfaces
+│   ├── utils/
+│   │   ├── response/
+│   │   │   └── error.response.ts      # Exception classes + global error handler
+│   │   └── security/                  # (upcoming)
+│   ├── app.controller.ts              # Express bootstrap — middleware, routing
+│   └── index.ts                       # Entry point
+├── .env
 ├── .gitignore
-├── .env.example
 ├── tsconfig.json
 ├── package.json
 └── README.md
@@ -127,61 +89,24 @@ SOCIAL-MEDIA-APP/
 
 ---
 
-## Database Models
-
-### User — `src/DB/models/user.model.ts`
-
-| Field | Type | Notes |
-|---|---|---|
-| `firstName` / `lastName` | String | Required · 2–20 chars each |
-| `fullName` | Virtual | Getter/setter that splits first and last name |
-| `email` | String | Required · Unique |
-| `password` | String | Required for `system` provider · bcrypt hashed |
-| `oldPasswords` | String[] | Stores previous hashed passwords to prevent reuse |
-| `phone` | String | AES encrypted at rest |
-| `gender` | `'male' \| 'female'` | Default: `male` |
-| `role` | `'user' \| 'admin'` | Default: `user` |
-| `provider` | `'system' \| 'google'` | Default: `system` |
-| `picture` | Object | `{ secure_url, public_id }` — Cloudinary |
-| `coverImages` | Object[] | Array of `{ secure_url, public_id }` — Cloudinary |
-| `confirmEmail` | Date | Set on verification; absent means unverified |
-| `confirmEmailOtp` | String | Hashed · removed after verification |
-| `forgetPasswordOtp` | String | Hashed · removed after reset |
-| `otpDate` | Date | OTP timestamp — drives the 2-minute expiry logic |
-| `changeCredentialsTime` | Date | Updated on password reset / logout-all |
-| `deletedAt` / `deletedBy` | Date / ObjectId | Soft-delete fields |
-| `restoredAt` / `restoredBy` | Date / ObjectId | Restore audit fields |
-
----
-
-### Token Blacklist — `src/DB/models/token.model.ts`
-
-| Field | Type | Notes |
-|---|---|---|
-| `jti` | String | Required · Unique — JWT ID |
-| `expiresIn` | Number | Unix timestamp |
-| `userId` | ObjectId | Required · Ref: `User` |
-
----
-
 ## Security Design
 
-- **Passwords** — bcrypt hashed; previous passwords stored to prevent reuse
-- **Phone numbers** — AES encrypted at rest, decrypted only on profile fetch
-- **OTPs** — bcrypt hashed with a 2-minute expiry; resend cooldown enforced
-- **JWT** — Access and refresh token pair with unique `jti` per token; single-session and global revocation supported
-- **Google OAuth** — ID token verified server-side; unified signup/login flow
-- **Zod** — Full runtime type validation on every incoming request, with strongly typed schemas
-- **Helmet** — Secure HTTP headers on every response
-- **Rate Limiting** — 2,000 requests per hour per IP; excess returns `429 Too Many Requests`
+- **Helmet** — sets secure HTTP headers on every response
+- **CORS** — enabled globally via `cors()` middleware
+- **Rate Limiting** — `express-rate-limit` caps each IP at 200 requests per hour; excess requests return `429 Too Many Requests` with a JSON error body
+- **Zod** — strict runtime schema validation on every incoming request body; unknown fields are rejected via `z.strictObject()`
+- **Password policy** — enforced at validation layer: min 8 chars, uppercase, lowercase, digit, and special character required
+- **Phone validation** — Egyptian numbers only (`010 / 011 / 012 / 015`) enforced via regex at the schema level
+
+> JWT, bcrypt, AES encryption, and OTP verification — coming in the next checkpoint.
 
 ---
 
 ## API Reference
 
-> 🔒 Protected routes require `Authorization: Bearer <token>` (users) or `Authorization: Admin <token>` (admins)
->
-> All routes return `400 Validation Error` on invalid input — omitted per endpoint for brevity.
+**Base URL:** `http://localhost:5000`
+
+> All routes return `400 Validation Error` on invalid input.
 
 ### Auth — `/auth`
 
@@ -189,34 +114,51 @@ SOCIAL-MEDIA-APP/
 |---|---|---|---|
 | `POST` | `/auth/signup` | Register a new user | — |
 | `POST` | `/auth/login` | Login with credentials | — |
-| `POST` | `/auth/gmail` | Signup or login with Google | — |
-| `PATCH` | `/auth/confirm-email` | Verify email with OTP | — |
-| `PATCH` | `/auth/resend-otp` | Resend verification OTP | — |
-| `PATCH` | `/auth/forget-password` | Request password reset OTP | — |
-| `PATCH` | `/auth/verify-forget-password` | Verify reset OTP | — |
-| `PATCH` | `/auth/reset-password` | Set a new password | — |
 
-### User — `/user`
-
-| Method | Route | Description | Auth |
-|---|---|---|---|
-| `GET` | `/user` | Get current user profile | 🔒 |
-| `PATCH` | `/user` | Update basic profile | 🔒 |
-| `PATCH` | `/user/password` | Change password | 🔒 |
-| `PATCH` | `/user/profile-image` | Upload profile image | 🔒 |
-| `PATCH` | `/user/profile-cover-images` | Upload cover images | 🔒 |
-| `GET` | `/user/refresh-token` | Rotate token pair | 🔒 |
-| `POST` | `/user/logout` | Logout (single or all sessions) | 🔒 |
-| `GET` | `/user/:userId` | View public profile | — |
-| `DELETE` | `/user/:userId/freeze-account` | Freeze account (soft-delete) | 🔒 |
-| `PATCH` | `/user/:userId/restore-account` | Restore frozen account | 🔒 Admin |
-| `DELETE` | `/user/:userId` | Hard delete account | 🔒 Admin |
+> More endpoints coming as features are added.
 
 ---
 
 ## Deployment
 
-> Deployment details will be added once the application is hosted.
+> To be documented once the application is hosted.
+
+---
+
+## 📍 Checkpoint — What's Done
+
+> **Last updated:** Initial project scaffold
+> Use this section as a reference when resuming — paste it at the start of your next prompt.
+
+### ✅ Completed
+
+**Project Bootstrap**
+- Express app initialized with full TypeScript configuration (`tsconfig.json`, typed `Request`/`Response` throughout)
+- Global middleware stack: `cors()`, `express.json()`, `helmet()`, `express-rate-limit` (200 req/hr per IP)
+- Entry point (`index.ts`) loads `dotenv` and calls `bootstrap()`
+- Invalid route handler — catches all unmatched routes with a structured `404` JSON response
+- Global async error handler middleware with typed `IError` interface
+
+**Error Handling Architecture**
+- `ApplicationException` — base typed exception class with `statusCode`, `message`, and `cause`
+- `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409) — all extend base
+- `globalErrorHandling` middleware returns structured JSON with `err_message`, `stack`, and `cause`
+
+**Auth Module — `/auth`**
+- `auth.controller.ts` — Router with `POST /signup` and `POST /login` wired to service
+- `auth.service.ts` — `AuthenticationService` class with `signup` and `login` handlers (scaffold, no DB yet)
+- `auth.dto.ts` — `ISignupBodyInputsDto` interface (`username`, `email`, `password`)
+- `auth.validation.ts` — Zod strict schemas: `username` (3–20 chars), `email`, `password` (strong regex), `phone` (Egyptian numbers)
+
+### 🔜 Not Started Yet
+- Zod validation middleware (schema → route wiring)
+- MongoDB connection + Mongoose models (User, Token)
+- Auth logic: signup with OTP, login with JWT, Google OAuth
+- Password hashing (bcrypt), AES field encryption, token blacklist
+- User module, Post module
+- File uploads (Multer + Cloudinary)
+- Email service (Nodemailer + EventEmitter)
+- Deployment (AWS EC2, Nginx, PM2)
 
 ---
 
