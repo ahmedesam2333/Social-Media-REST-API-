@@ -1,0 +1,43 @@
+{
+  "name": "social-media-rest-api-",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">",
+  "keywords": [
+    "typescript",
+    "expressjs",
+    "nodejs"
+  ],
+  "homepage": "https://github.com/ahmedesam2333/Social-Media-REST-API-#readme",
+  "bugs": {
+    "url": "https://github.com/ahmedesam2333/Social-Media-REST-API-/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmedesam2333/Social-Media-REST-API-.git"
+  },
+  "license": "ISC",
+  "author": "Ahmed Essam",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "start:dev": "concurrently \"tsc --watch\" \"node --watch dist/index.js\""
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.6",
+    "@types/express-rate-limit": "^5.1.3",
+    "@types/helmet": "^0.0.48",
+    "@types/node": "^25.9.1",
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "mongoose": "^9.6.2",
+    "zod": "^4.4.3"
+  }
+}
