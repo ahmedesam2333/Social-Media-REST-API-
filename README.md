@@ -62,10 +62,7 @@ A feature-rich social media REST API built from the ground up with **TypeScript*
 | File Upload | Multer + Cloudinary |
 | OTP | nanoid (`customAlphabet`) |
 | Config | dotenv |
-| Logging | Winston / Morgan |
-| Process Manager | PM2 (cluster mode) |
-| Web Server | Nginx (reverse proxy) |
-| Cloud Infrastructure | AWS EC2, Elastic IP |
+| Logging | Morgan |
 
 ---
 
@@ -220,13 +217,6 @@ SOCIAL-MEDIA-APP/
 ## Deployment
 
 > Deployment details will be added once the application is hosted.
-
-Planned infrastructure:
-
-- **AWS EC2** — Ubuntu server with Elastic IP
-- **Nginx** — Reverse proxy routing traffic to the Node.js process
-- **PM2** — Cluster mode with crash recovery and boot persistence
-- **Security Groups** — Inbound rules for HTTP (80), HTTPS (443), SSH (22)
 
 ---
 
