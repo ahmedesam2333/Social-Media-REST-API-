@@ -128,7 +128,6 @@ SOCIAL-MEDIA-REST-API/
 ## 📍 Checkpoint — What's Done
 
 > **Last updated:** Initial project scaffold
-> Use this section as a reference when resuming — paste it at the start of your next prompt.
 
 ### ✅ Completed
 
@@ -149,16 +148,6 @@ SOCIAL-MEDIA-REST-API/
 - `auth.service.ts` — `AuthenticationService` class with `signup` and `login` handlers (scaffold, no DB yet)
 - `auth.dto.ts` — `ISignupBodyInputsDto` interface (`username`, `email`, `password`)
 - `auth.validation.ts` — Zod strict schemas: `username` (3–20 chars), `email`, `password` (strong regex), `phone` (Egyptian numbers)
-
-### 🔜 Not Started Yet
-- Zod validation middleware (schema → route wiring)
-- MongoDB connection + Mongoose models (User, Token)
-- Auth logic: signup with OTP, login with JWT, Google OAuth
-- Password hashing (bcrypt), AES field encryption, token blacklist
-- User module, Post module
-- File uploads (Multer + Cloudinary)
-- Email service (Nodemailer + EventEmitter)
-- Deployment (AWS EC2, Nginx, PM2)
 
 ---
 
