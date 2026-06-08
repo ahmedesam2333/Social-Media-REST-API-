@@ -259,22 +259,6 @@ SOCIAL-MEDIA-REST-API/
 
 ---
 
-## 📍 Checkpoint — What's Done
-
-> **Last updated:** Initial project scaffold
-> Paste this section at the start of your next prompt to resume without re-explaining anything.
-
-- Express + TypeScript fully bootstrapped; global middleware stack in place; `dotenv` loads at entry point
-- Typed exception hierarchy: `ApplicationException`, `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409)
-- `globalErrorHandling` middleware with structured JSON response (`err_message`, `stack`, `cause`)
-- Invalid route handler — structured `404` for all unmatched routes
-- Auth module: `POST /signup` and `POST /login` wired to `AuthenticationService` class
-- Zod strict schemas for signup: `username`, `email`, strong `password` regex, Egyptian `phone` regex
-- `ISignupBodyInputsDto` typed interface between validation and service layers
-- No DB connection yet — service layer returns scaffold responses
-
----
-
 ## 👨‍💻 Author
 
 **Ahmed Essam** — Node.js Backend Engineer
