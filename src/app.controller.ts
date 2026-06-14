@@ -21,10 +21,12 @@ const bootstrap = (): void => {
 
   //app-routing
   app.get("/", (req: Request, res: Response) => {
-    return res.json({ message: "Welcome to Social Media App ❤️" });
+    return res.json({
+      message: `Welcome to ${process.env.APPLICATION_NAME} ❤️`,
+    });
   });
 
-  //modules
+  //Routes
   app.use("/auth", authController);
 
   //Invalid Routing
