@@ -9,7 +9,8 @@ const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = require("express-rate-limit");
 const auth_controller_1 = __importDefault(require("./modules/auth/auth.controller"));
 const error_response_1 = require("./utils/response/error.response");
-const bootstrap = () => {
+const db_connection_js_1 = __importDefault(require("./DB/db.connection.js"));
+const bootstrap = async () => {
     const app = (0, express_1.default)();
     const port = Number(process.env.PORT) || 5000;
     const limiter = (0, express_rate_limit_1.rateLimit)({
@@ -20,6 +21,7 @@ const bootstrap = () => {
         },
     });
     app.use((0, cors_1.default)(), express_1.default.json(), (0, helmet_1.default)(), limiter);
+    await (0, db_connection_js_1.default)();
     app.get("/", (req, res) => {
         return res.json({
             message: `Welcome to ${process.env.APPLICATION_NAME} ❤️`,

@@ -5,8 +5,9 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import authController from "./modules/auth/auth.controller";
 import { globalErrorHandling } from "./utils/response/error.response";
+import connectDB from "./DB/db.connection.js";
 
-const bootstrap = (): void => {
+const bootstrap = async (): Promise<void> => {
   const app: Express = express();
   const port: number = Number(process.env.PORT) || 5000;
   const limiter = rateLimit({
@@ -18,7 +19,7 @@ const bootstrap = (): void => {
   });
 
   app.use(cors(), express.json(), helmet(), limiter);
-
+  await connectDB();
   //app-routing
   app.get("/", (req: Request, res: Response) => {
     return res.json({
