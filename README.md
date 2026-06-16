@@ -25,12 +25,11 @@
 - [Overview](#overview)
 - [Implemented Features](#implemented-features)
 - [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
 - [Database Models](#database-models)
+- [Project Structure](#project-structure)
 - [Security Design](#security-design)
 - [API Reference](#api-reference)
 - [Roadmap](#roadmap)
-- [Deployment](#deployment)
 - [Author](#author)
 
 ---
@@ -86,38 +85,6 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 
 ---
 
-## Project Structure
-
-```
-SOCIAL-MEDIA-REST-API/
-├── src/
-│   ├── DB/
-│   │   └── db.connection.ts
-│   │   └── models/
-│   │       └── User.model.ts          # User schema, enums, interfaces
-│   ├── middleware/
-│   │   └── validation.middleware.ts   # Generic Zod validation middleware + shared field schemas
-│   ├── modules/
-│   │   └── auth/
-│   │       ├── auth.controller.ts     # Route definitions + middleware wiring
-│   │       ├── auth.service.ts        # Business logic + token/password operations
-│   │       ├── auth.validation.ts     # Zod schemas (login, signup)
-│   │       └── auth.dto.ts            # Input type interfaces (inferred from Zod)
-│   ├── utils/
-│   │   └── response/
-│   │       └── error.response.ts      # Exception classes + global error handler
-│   ├── app.controller.ts              # Express bootstrap — middleware stack, routing
-│   └── index.ts                       # Entry point
-├── .env
-├── .env.example
-├── .gitignore
-├── tsconfig.json
-├── package.json
-└── README.md
-```
-
----
-
 ## Database Models
 
 ### User — `src/DB/models/User.model.ts`
@@ -147,6 +114,38 @@ SOCIAL-MEDIA-REST-API/
 |---|---|
 | `RoleEnum` | `user`, `admin` |
 | `GenderEnum` | `male`, `female` |
+
+---
+
+## Project Structure
+
+```
+SOCIAL-MEDIA-REST-API/
+├── src/
+│   ├── DB/
+│   │   └── db.connection.ts
+│   │   └── models/
+│   │       └── User.model.ts          # User schema, enums, interfaces
+│   ├── middleware/
+│   │   └── validation.middleware.ts   # Generic Zod validation middleware + shared field schemas
+│   ├── modules/
+│   │   └── auth/
+│   │       ├── auth.controller.ts     # Route definitions + middleware wiring
+│   │       ├── auth.service.ts        # Business logic + token/password operations
+│   │       ├── auth.validation.ts     # Zod schemas (login, signup)
+│   │       └── auth.dto.ts            # Input type interfaces (inferred from Zod)
+│   ├── utils/
+│   │   └── response/
+│   │       └── error.response.ts      # Exception classes + global error handler
+│   ├── app.controller.ts              # Express bootstrap — middleware stack, routing
+│   └── index.ts                       # Entry point
+├── .env
+├── .env.example
+├── .gitignore
+├── tsconfig.json
+├── package.json
+└── README.md
+```
 
 ---
 
