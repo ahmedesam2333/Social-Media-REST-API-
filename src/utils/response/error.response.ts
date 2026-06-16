@@ -8,7 +8,7 @@ export class ApplicationException extends Error {
   constructor(
     message: string,
     public statusCode: number = 400,
-    cause?: unknown
+    cause?: unknown,
   ) {
     super(message, { cause });
     this.name = this.constructor.name;
@@ -38,12 +38,12 @@ export const globalErrorHandling = (
   error: IError,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   return res.status(error.statusCode || 500).json({
     err_message:
       error.message || "Something went wrong, please try again later",
-    stack: error.stack,
+    stack: process.env.MOOD === "DEV" ? error.stack : undefined,
     cause: error.cause,
     error,
   });

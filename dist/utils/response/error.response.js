@@ -32,7 +32,7 @@ exports.ConflictException = ConflictException;
 const globalErrorHandling = (error, req, res, next) => {
     return res.status(error.statusCode || 500).json({
         err_message: error.message || "Something went wrong, please try again later",
-        stack: error.stack,
+        stack: process.env.MOOD === "DEV" ? error.stack : undefined,
         cause: error.cause,
         error,
     });

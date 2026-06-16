@@ -3,8 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 class AuthenticationService {
     constructor() { }
     signup = (req, res) => {
-        const { username, email, password } = req.body;
-        console.log({ username, email, password });
         return res.status(201).json({ message: "Signup route", data: req.body });
     };
     login = (req, res) => {
