@@ -57,32 +57,14 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 **Express Application Bootstrap**
 - Initialized Express application with a modular middleware stack and centralized routing via `app.controller.ts`
 - Configured global security middleware: Helmet, CORS, and rate limiting (200 req/hr per IP)
-- Established foundational error handling and request processing pipelines
-
-**Auth Routes & Controller**
-- Registered `/auth/signup` and `/auth/login` endpoints in the auth controller
-- Integrated request validation middleware at the route level, validating before handlers execute
-- Structured auth workflows for user registration and credential-based authentication
 
 **Generic Request Validation Middleware**
 - Built a reusable `validateRequest` middleware that validates any combination of `body`, `params`, or `query` against Zod schemas
 - Centralized validation logic at the request boundary — invalid input is rejected before reaching controllers
 - Returns `400 Validation Error` responses with detailed field-level error messages
 
-**Shared Field Schemas**
-- Defined reusable validation schemas for common fields (`email`, `password`, `username`, `phone`) in the validation middleware
-- Schemas are composed into endpoint-specific validators, eliminating redundancy across modules
-- Email validation via RFC 5322 standard; password enforces uppercase, lowercase, digit, and special character requirements
-
-**Signup & Login Validation Schemas**
-- `signupSchema` enforces username as exactly two words (first and last name) via `superRefine` custom checks
-- `signupSchema` validates email uniqueness, strong password policy, and Egyptian phone format (`010 / 011 / 012 / 015`)
-- `loginSchema` validates email and password presence and format
-- `ISignupBodyInputsDto` inferred dynamically from Zod schema — eliminates manual type duplication and keeps types in sync
-
 **Global Error Handling**
 - Centralized `globalErrorHandling` middleware using custom exception classes for structured error responses
-- Conditional stack trace exposure: stack traces are included in `DEV` environment; suppressed in `PROD` for security
 - Uniform JSON error responses across all routes with consistent error formatting
 
 ---
