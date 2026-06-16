@@ -299,12 +299,6 @@ The file processing pipeline built to handle media uploads efficiently without b
 
 ---
 
-## Deployment
-
-> To be documented once the application is hosted.
-
----
-
 ## 👨‍💻 Author
 
 **Ahmed Essam** — Node.js Backend Engineer
