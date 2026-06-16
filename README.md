@@ -23,13 +23,13 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Implemented Features](#implemented-features)
 - [Roadmap](#roadmap)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Security Design](#security-design)
 - [API Reference](#api-reference)
 - [Deployment](#deployment)
-- [Changelog](#changelog)
 - [Author](#author)
 
 ---
@@ -46,6 +46,33 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 4. They send and accept friend requests to build their social graph
 5. They open real-time chat sessions powered by Socket.io
 6. Admins manage roles and accounts via a protected dashboard
+
+---
+
+## Implemented Features
+
+### 🔐 Authentication Module
+
+**Express App Bootstrap**
+- Initialized Express application with a modular middleware stack and centralized routing via `app.controller.ts`
+- Configured global security middleware: Helmet, CORS, and rate limiting (200 req/hr per IP)
+
+**Auth Routes & Controller**
+- Registered `/auth/signup` and `/auth/login` endpoints in the auth controller
+- Wired Zod validation middleware into each route before the handler executes
+
+**Request Validation Middleware**
+- Built a generic `validateRequest` middleware that accepts a Zod schema and a target property (`body`, `params`, or `query`) and rejects invalid input at the request boundary
+- Defined reusable field schemas (`email`, `password`, `username`, `phone`) shared across all auth schemas
+
+**Signup & Login Zod Schemas**
+- Defined `signupSchema` with strict field rules: username (exactly two words enforced via `superRefine`), valid email, strong password policy, and Egyptian phone number format
+- Defined `loginSchema` validating email and password fields
+- `ISignupBodyInputsDto` is inferred directly from `signupSchema` — no manual type duplication
+
+**Global Error Handler**
+- Implemented a centralized `globalErrorHandling` middleware using custom exception classes
+- Stack traces are conditionally included in responses — exposed only in `DEV` mode, suppressed in production
 
 ---
 
@@ -258,19 +285,6 @@ SOCIAL-MEDIA-REST-API/
 ## Deployment
 
 > To be documented once the application is hosted.
-
----
-
-## Changelog
-
-### `feat(auth)` — Request Validation Middleware & Auth Schemas
-
-- Introduced a **generic request validation middleware** (`validation.middleware.ts`) that validates any combination of `body`, `params`, and `query` against Zod schemas before reaching the controller
-- Defined **reusable shared field schemas** (`email`, `password`, `username`, `phone`) in the validation middleware for use across modules
-- Added and wired **Zod validation schemas** for both `login` and `signup` endpoints into the auth controller routes
-- Implemented a **custom `superRefine` check** on the signup `username` field to enforce exactly two words (first and last name)
-- Updated `ISignupBodyInputsDto` to **infer its types dynamically** from the Zod signup schema, eliminating manual type duplication
-- Updated `globalErrorHandling` to **conditionally expose stack traces** — visible only in `DEV` environment mode
 
 ---
 
