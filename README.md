@@ -24,11 +24,12 @@
 
 - [Overview](#overview)
 - [Implemented Features](#implemented-features)
-- [Roadmap](#roadmap)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
+- [Database Models](#database-models)
 - [Security Design](#security-design)
 - [API Reference](#api-reference)
+- [Roadmap](#roadmap)
 - [Deployment](#deployment)
 - [Author](#author)
 
@@ -51,107 +52,38 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 
 ## Implemented Features
 
-### 🔐 Authentication Module
+### 🔐 Authentication & Request Validation
 
-**Express App Bootstrap**
+**Express Application Bootstrap**
 - Initialized Express application with a modular middleware stack and centralized routing via `app.controller.ts`
 - Configured global security middleware: Helmet, CORS, and rate limiting (200 req/hr per IP)
+- Established foundational error handling and request processing pipelines
 
 **Auth Routes & Controller**
 - Registered `/auth/signup` and `/auth/login` endpoints in the auth controller
-- Wired Zod validation middleware into each route before the handler executes
+- Integrated request validation middleware at the route level, validating before handlers execute
+- Structured auth workflows for user registration and credential-based authentication
 
-**Request Validation Middleware**
-- Built a generic `validateRequest` middleware that accepts a Zod schema and a target property (`body`, `params`, or `query`) and rejects invalid input at the request boundary
-- Defined reusable field schemas (`email`, `password`, `username`, `phone`) shared across all auth schemas
+**Generic Request Validation Middleware**
+- Built a reusable `validateRequest` middleware that validates any combination of `body`, `params`, or `query` against Zod schemas
+- Centralized validation logic at the request boundary — invalid input is rejected before reaching controllers
+- Returns `400 Validation Error` responses with detailed field-level error messages
 
-**Signup & Login Zod Schemas**
-- Defined `signupSchema` with strict field rules: username (exactly two words enforced via `superRefine`), valid email, strong password policy, and Egyptian phone number format
-- Defined `loginSchema` validating email and password fields
-- `ISignupBodyInputsDto` is inferred directly from `signupSchema` — no manual type duplication
+**Shared Field Schemas**
+- Defined reusable validation schemas for common fields (`email`, `password`, `username`, `phone`) in the validation middleware
+- Schemas are composed into endpoint-specific validators, eliminating redundancy across modules
+- Email validation via RFC 5322 standard; password enforces uppercase, lowercase, digit, and special character requirements
 
-**Global Error Handler**
-- Implemented a centralized `globalErrorHandling` middleware using custom exception classes
-- Stack traces are conditionally included in responses — exposed only in `DEV` mode, suppressed in production
+**Signup & Login Validation Schemas**
+- `signupSchema` enforces username as exactly two words (first and last name) via `superRefine` custom checks
+- `signupSchema` validates email uniqueness, strong password policy, and Egyptian phone format (`010 / 011 / 012 / 015`)
+- `loginSchema` validates email and password presence and format
+- `ISignupBodyInputsDto` inferred dynamically from Zod schema — eliminates manual type duplication and keeps types in sync
 
----
-
-## Roadmap
-
-The following modules represent the full planned scope of the project. Built incrementally — this section updates as each feature ships.
-
----
-
-### 🔐 1. User Authentication & Account Management
-
-Complete secure onboarding flow, credential validation, and session management.
-
-- **Secure Signup & Login** — User account registration and authentication handling
-- **Password Hashing** — Secure password storage using cryptographic hashing functions
-- **Email Verification & OTP** — Sending verification emails, generating and validating One-Time Passwords to activate accounts
-- **JWT Session Management** — Issuing JSON Web Tokens upon login for stateless authentication
-- **Token Refresh & Revocation** — Refresh tokens to maintain sessions safely with secure logout support
-- **Forgot Password Workflow** — Complete multi-step recovery flow for resetting forgotten passwords
-
----
-
-### 👤 2. User Profile & Role Management
-
-Features related to managing user data, access tiers, and custom metadata.
-
-- **Role-Based Access Control (RBAC)** — Detecting user roles and signature levels; admin dashboard management using `Promise.allSettled`; dynamically changing a user's system role
-- **Profile & Cover Image Management** — Uploading and updating profile pictures and cover photos; automated cleanup via Node events to delete old images on replacement
-- **Global Request Object Enhancement** — Extending the Express `Request` interface (`IRequest`) to inject authenticated user data and authorization metadata seamlessly into route handlers
-
----
-
-### 📰 3. Feed & Post System
-
-The core content engine of the application, managing user posts and feed optimization.
-
-- **Post Creation & Validation** — Building post data models and implementing request validation before publishing
-- **Post Availability Control** — Managing public visibility states and structural access conditions for posts
-- **Post Modification** — Updating posts using optimized MongoDB/Mongoose Aggregation Pipelines
-- **Feed Pagination** — High-performance post retrieval using pagination to limit payload sizes and boost loading speeds
-- **Engagement Metrics** — Like and Unlike capabilities on posts via automated database hooks
-
----
-
-### 💬 4. Comment & Interaction System
-
-Features that allow users to converse and engage underneath published content.
-
-- **Multi-Level Commenting** — Top-level comments on posts; replies on comments; nested replies on existing replies
-- **Route Parameter Merging** — Leveraging Express `mergeParams` to cleanly handle nested routing (e.g., `/posts/:postId/comments`)
-- **Optimized Performance Queries** — Fetching posts with associated comments using Virtual Populate and streaming techniques
-
----
-
-### 🤝 5. Social Connections & Real-Time Chat
-
-The networking layer, transitioning the application from static data into live, real-time interactivity.
-
-- **Friendship Lifecycle** — Send, receive, accept, and process friend requests between users
-- **Real-Time Architecture** — Full Socket.io integration for persistent, bidirectional communication
-- **Authenticated Handshakes** — Securing socket connections during initial handshake with specialized WebSocket error handling
-- **Event-Driven Communication** — Advanced dispatching patterns: targeted emit, broadcast, `io.emit` (global), and io-except-emit
-- **Multiplexing (Namespaces)** — Splitting socket traffic into dedicated channels to isolate chat from notifications
-- **Delivery Acknowledgments (ACK)** — Socket acknowledgments for reliable message delivery
-- **Chat User Directory** — Fetching active chat participants matched with real-time statuses and profile imagery
-
----
-
-### ☁️ 6. Cloud Storage & Asset Management (AWS S3)
-
-The file processing pipeline built to handle media uploads efficiently without blocking server execution.
-
-- **Multer Storage Architecture** — Disk Storage vs Memory Storage evaluation; temporary OS staging for large file offloading
-- **File Constraints** — Hard enforcement of file size limits and extension type validation
-- **AWS S3 Bucket Integration** — Secure cloud bucket configuration
-- **Optimized Upload Mechanics** — Standard uploads via `PutObjectCommand`; chunked processing for large assets
-- **Secure Access via Pre-signed URLs** — `preUploadSignedUrl` for direct client-to-S3 uploads; `getAsset` pre-signed URLs for secure private asset retrieval
-- **File & Folder Purging** — Single deletion, batch deletion, and directory purging using S3 prefix-matching patterns
-- **Soft vs Hard Deletion** — Balancing data safety with permanent cleanup using soft-restore logic alongside definitive hard deletes
+**Global Error Handling**
+- Centralized `globalErrorHandling` middleware using custom exception classes for structured error responses
+- Conditional stack trace exposure: stack traces are included in `DEV` environment; suppressed in `PROD` for security
+- Uniform JSON error responses across all routes with consistent error formatting
 
 ---
 
@@ -177,12 +109,15 @@ The file processing pipeline built to handle media uploads efficiently without b
 ```
 SOCIAL-MEDIA-REST-API/
 ├── src/
+│   ├── DB/
+│   │   └── models/
+│   │       └── User.model.ts          # User schema, enums, interfaces
 │   ├── middleware/
 │   │   └── validation.middleware.ts   # Generic Zod validation middleware + shared field schemas
 │   ├── modules/
 │   │   └── auth/
 │   │       ├── auth.controller.ts     # Route definitions + middleware wiring
-│   │       ├── auth.service.ts        # Business logic
+│   │       ├── auth.service.ts        # Business logic + token/password operations
 │   │       ├── auth.validation.ts     # Zod schemas (login, signup)
 │   │       └── auth.dto.ts            # Input type interfaces (inferred from Zod)
 │   ├── utils/
@@ -191,11 +126,44 @@ SOCIAL-MEDIA-REST-API/
 │   ├── app.controller.ts              # Express bootstrap — middleware stack, routing
 │   └── index.ts                       # Entry point
 ├── .env
+├── .env.example
 ├── .gitignore
 ├── tsconfig.json
 ├── package.json
 └── README.md
 ```
+
+---
+
+## Database Models
+
+### User — `src/DB/models/User.model.ts`
+
+| Field | Type | Notes |
+|---|---|---|
+| `_id` | ObjectId | MongoDB primary key |
+| `firstName` | String | Required · 2–25 chars |
+| `lastName` | String | Required · 2–25 chars |
+| `username` | Virtual | Getter/setter that combines first and last name |
+| `email` | String | Required · Unique index |
+| `password` | String | Required · bcrypt hashed |
+| `phone` | String | Optional · Egyptian format validation |
+| `address` | String | Optional |
+| `gender` | String | `male` / `female` · Default: `male` |
+| `role` | String | `user` / `admin` · Default: `user` |
+| `confirmedAt` | Date | Email verification timestamp |
+| `confirmEmailOtp` | String | Hashed OTP for email verification · removed after confirmation |
+| `resetPasswordOtp` | String | Hashed OTP for password reset · removed after reset |
+| `changeCredentialsTime` | Date | Updated on password change · invalidates prior sessions |
+| `createdAt` | Date | Auto-generated timestamp |
+| `updatedAt` | Date | Auto-updated on any modification |
+
+**Enums**
+
+| Enum | Values |
+|---|---|
+| `RoleEnum` | `user`, `admin` |
+| `GenderEnum` | `male`, `female` |
 
 ---
 
@@ -279,6 +247,72 @@ SOCIAL-MEDIA-REST-API/
 | `400` | Validation error |
 
 </details>
+
+---
+
+## Roadmap
+
+The following modules represent the planned scope of the project. Built incrementally — this section updates as each feature ships.
+
+---
+
+### 👤 1. User Profile & Role Management
+
+Features related to managing user data, access tiers, and custom metadata.
+
+- **Role-Based Access Control (RBAC)** — Detecting user roles and signature levels; admin dashboard management using `Promise.allSettled`; dynamically changing a user's system role
+- **Profile & Cover Image Management** — Uploading and updating profile pictures and cover photos; automated cleanup via Node events to delete old images on replacement
+- **Global Request Object Enhancement** — Extending the Express `Request` interface to inject authenticated user data and authorization metadata seamlessly into route handlers
+
+---
+
+### 📰 2. Feed & Post System
+
+The core content engine of the application, managing user posts and feed optimization.
+
+- **Post Creation & Validation** — Building post data models and implementing request validation before publishing
+- **Post Availability Control** — Managing public visibility states and structural access conditions for posts
+- **Post Modification** — Updating posts using optimized MongoDB/Mongoose Aggregation Pipelines
+- **Feed Pagination** — High-performance post retrieval using pagination to limit payload sizes and boost loading speeds
+- **Engagement Metrics** — Like and Unlike capabilities on posts via automated database hooks
+
+---
+
+### 💬 3. Comment & Interaction System
+
+Features that allow users to converse and engage underneath published content.
+
+- **Multi-Level Commenting** — Top-level comments on posts; replies on comments; nested replies on existing replies
+- **Route Parameter Merging** — Leveraging Express `mergeParams` to cleanly handle nested routing (e.g., `/posts/:postId/comments`)
+- **Optimized Performance Queries** — Fetching posts with associated comments using Virtual Populate and streaming techniques
+
+---
+
+### 🤝 4. Social Connections & Real-Time Chat
+
+The networking layer, transitioning the application from static data into live, real-time interactivity.
+
+- **Friendship Lifecycle** — Send, receive, accept, and process friend requests between users
+- **Real-Time Architecture** — Full Socket.io integration for persistent, bidirectional communication
+- **Authenticated Handshakes** — Securing socket connections during initial handshake with specialized WebSocket error handling
+- **Event-Driven Communication** — Advanced dispatching patterns: targeted emit, broadcast, `io.emit` (global), and io-except-emit
+- **Multiplexing (Namespaces)** — Splitting socket traffic into dedicated channels to isolate chat from notifications
+- **Delivery Acknowledgments (ACK)** — Socket acknowledgments for reliable message delivery
+- **Chat User Directory** — Fetching active chat participants matched with real-time statuses and profile imagery
+
+---
+
+### ☁️ 5. Cloud Storage & Asset Management (AWS S3)
+
+The file processing pipeline built to handle media uploads efficiently without blocking server execution.
+
+- **Multer Storage Architecture** — Disk Storage vs Memory Storage evaluation; temporary OS staging for large file offloading
+- **File Constraints** — Hard enforcement of file size limits and extension type validation
+- **AWS S3 Bucket Integration** — Secure cloud bucket configuration
+- **Optimized Upload Mechanics** — Standard uploads via `PutObjectCommand`; chunked processing for large assets
+- **Secure Access via Pre-signed URLs** — `preUploadSignedUrl` for direct client-to-S3 uploads; `getAsset` pre-signed URLs for secure private asset retrieval
+- **File & Folder Purging** — Single deletion, batch deletion, and directory purging using S3 prefix-matching patterns
+- **Soft vs Hard Deletion** — Balancing data safety with permanent cleanup using soft-restore logic alongside definitive hard deletes
 
 ---
 
