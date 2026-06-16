@@ -110,6 +110,7 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 SOCIAL-MEDIA-REST-API/
 ├── src/
 │   ├── DB/
+│   │   └── db.connection.ts
 │   │   └── models/
 │   │       └── User.model.ts          # User schema, enums, interfaces
 │   ├── middleware/
