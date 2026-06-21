@@ -40,63 +40,109 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 
 **Core flow:**
 
-1. A user registers and receives a 6-digit OTP via email for verification
-2. They confirm their email using the OTP, then authenticate with JWT credentials
-3. They build a profile with image and cover uploads stored on AWS S3
-4. They publish posts, control visibility, and interact with others' content via likes and comments
-5. They send and accept friend requests to build their social graph
-6. They open real-time chat sessions powered by Socket.io
-7. Admins manage roles and accounts via a protected dashboard
+1. User registers → receives a 6-digit OTP via email
+2. Confirms email with OTP → gains access to login
+3. Authenticates → receives JWT access & refresh tokens
+4. Builds profile, publishes posts, interacts with content
+5. Sends friend requests, opens real-time chat via Socket.io
+6. Admins manage roles and accounts via a protected dashboard
 
 ---
 
 ## Implemented Features
 
-### 🔐 Authentication & Security
+### 🏗️ Application Bootstrap
 
-**Express Application Bootstrap**
-- Initialized Express application with a modular middleware stack and centralized routing via `app.controller.ts`
-- Configured global security middleware: Helmet, CORS, and rate limiting (200 req/hr per IP)
+Initialized Express with a modular middleware stack and centralized routing via `app.controller.ts`. Global middleware applied: **Helmet** (secure headers), **CORS**, and **rate limiting** (200 req/hr per IP, `429` on excess).
 
-**Generic Request Validation Middleware**
-- Built a reusable `validation` middleware that validates any combination of `body`, `params`, or `query` against Zod schemas
-- Centralized `generalFields` exports shared field schemas: `email`, `password`, `username`, `phone`, and `otp`
-- Returns `400 Validation Error` responses with structured field-level error messages including path and message per issue
+---
 
-**Authentication Middleware**
-- `authentication` middleware extracts and validates the `Authorization` header, decodes the JWT, and injects the hydrated `user` document and `decoded` payload into the Express `Request` object via `IAuthReq`
-- Supports role-aware token decoding using `SignatureLevelEnum` (`Bearer` for users, `System` for admins)
+### 🗄️ Repository Pattern — `DB/repository/`
 
-**Repository Pattern — `DB/repository/`**
-- Abstract `DatabaseRepository<TDocument>` base class wraps Mongoose operations (`create`, `findOne`, `updateOne`) with fully typed generics — `QueryFilter`, `ProjectionType`, `UpdateQuery`, and `PopulateOptions`
-- `updateOne` automatically increments `__v` on every write for optimistic concurrency tracking
-- `UserRepository` extends the base with a `createUser` method that destructures the first created document and throws `BadRequestException` on failure
+Abstract `DatabaseRepository<TDocument>` wraps Mongoose with fully typed generics. All model-specific repositories extend it.
 
-**JWT Token System — `utils/security/token.security.ts`**
-- `generateToken` and `verifyToken` wrap `jsonwebtoken` with typed payloads and configurable secrets and expiry via environment variables
-- `detectSignatureLevel` maps user roles to `SignatureLevelEnum`, selecting the appropriate key pair
-- `getSignatures` resolves the correct access and refresh secret pair based on signature level (user vs admin)
-- `createLoginCredentials` issues both an access token and a refresh token for the authenticated user
-- `decodeToken` parses the `Authorization` header, verifies the token against the matching signature, validates payload shape, and returns the full hydrated user document alongside the decoded JWT
+| Method | Behavior |
+|---|---|
+| `create` | Inserts documents with optional `CreateOptions` |
+| `findOne` | Supports projection, lean mode, and populate |
+| `updateOne` | Applies update and auto-increments `__v` for optimistic concurrency |
 
-**Password & OTP Hashing — `utils/security/hash.security.ts` · `utils/otp.ts`**
-- `generateHash` and `compareHash` wrap `bcrypt` with a configurable salt round from environment config
-- `generateOtp` produces a cryptographically random 6-digit numeric OTP and returns both the plain value (for delivery) and a bcrypt hash (for storage)
+`UserRepository` extends the base with `createUser` — unwraps the first result and throws `BadRequestException` on failure.
 
-**Structured Exception Hierarchy — `utils/response/error.response.ts`**
-- `ApplicationException` base class with `statusCode`, `cause`, and stack capture
-- Named subclasses: `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409), `UnauthorizedException` (401), `ForbiddenException` (403)
-- `globalErrorHandling` Express error middleware returns uniform JSON responses; stack traces are exposed only in `DEV` mode
+---
 
-**Transactional Email System — `utils/email/` · `utils/event/`**
-- `sendEmail` configures a Nodemailer Gmail SMTP transporter, enforces content presence, and injects the sender identity from environment config
-- `emailTemplate` renders a fully styled dark-mode HTML email with the OTP code embedded and a 2-minute expiry notice
-- `emailEvent` is a Node.js `EventEmitter` that decouples email dispatch from service logic — the `confirmEmail` event handler populates subject, HTML, and plain-text body before calling `sendEmail`
+### ✅ Request Validation — `middleware/validation.middleware.ts`
 
-**Auth Module — `modules/auth/`**
-- `signup` — validates input, checks for email conflicts, hashes the password, generates and stores a hashed OTP, creates the user record via `UserRepository`, and fires the `confirmEmail` event
-- `login` — validates credentials, checks `confirmedAt` existence, compares the bcrypt password, and issues access and refresh tokens via `createLoginCredentials`
-- `confirmEmail` — validates the email and OTP, verifies the hashed OTP, then atomically sets `confirmedAt` and unsets `confirmEmailOtp` in a single `updateOne` call
+- `validation(schema)` — validates any mix of `body`, `params`, or `query` against Zod schemas; returns structured `400` errors with field path and message per issue
+- `generalFields` — shared canonical schemas (`email`, `password`, `username`, `phone`, `otp`) imported across all modules
+
+---
+
+### 🔑 JWT Token System — `utils/security/token.security.ts`
+
+Role-aware dual-token architecture with separate signing keys for users and admins.
+
+| Utility | Description |
+|---|---|
+| `generateToken` | Signs a payload with configurable secret and expiry |
+| `verifyToken` | Verifies and returns the decoded `JwtPayload` |
+| `detectSignatureLevel` | Maps `RoleEnum` → `SignatureLevelEnum` (`Bearer` / `System`) |
+| `getSignatures` | Resolves the correct access + refresh key pair by signature level |
+| `createLoginCredentials` | Issues both access and refresh tokens for the authenticated user |
+| `decodeToken` | Parses `Authorization` header, verifies token, validates payload, returns hydrated user |
+
+---
+
+### 🔐 Authentication Middleware — `middleware/authentication.middleware.ts`
+
+Extracts and verifies the `Authorization` header, then injects the hydrated `user` document and `decoded` JWT payload into the request via `IAuthReq`. Throws `UnauthorizedException` if the header is missing or the token is invalid.
+
+---
+
+### 🔒 Hashing & OTP — `utils/security/hash.security.ts` · `utils/otp.ts`
+
+- `generateHash` / `compareHash` — bcrypt wrappers with salt round from env config
+- `generateOtp` — produces a cryptographically random 6-digit OTP, returns plain value (for delivery) and bcrypt hash (for storage)
+
+---
+
+### ✉️ Transactional Email — `utils/email/` · `utils/event/`
+
+Event-driven email dispatch fully decoupled from service logic.
+
+- **`sendEmail`** — Nodemailer Gmail SMTP transporter; enforces content presence; injects sender identity from env
+- **`emailTemplate`** — Dark-mode HTML email with embedded OTP, 2-minute expiry notice, and branded header
+- **`emailEvent`** — Node.js `EventEmitter`; the `confirmEmail` listener composes subject, HTML, and plain-text body then calls `sendEmail`
+
+**OTP Email Preview**
+
+![OTP Email](https://drive.google.com/uc?export=view&id=1voPj8xx9mCEOA10FSuUPOAA4loHNsWz9)
+
+---
+
+### ⚠️ Exception Hierarchy — `utils/response/error.response.ts`
+
+`ApplicationException` base with `statusCode`, `cause`, and stack capture. Named subclasses:
+
+| Class | Status |
+|---|---|
+| `BadRequestException` | `400` |
+| `UnauthorizedException` | `401` |
+| `ForbiddenException` | `403` |
+| `NotFoundException` | `404` |
+| `ConflictException` | `409` |
+
+`globalErrorHandling` middleware returns uniform JSON error responses. Stack traces are only exposed in `DEV` mode.
+
+---
+
+### 🔏 Auth Module — `modules/auth/`
+
+| Endpoint | Description |
+|---|---|
+| `POST /auth/signup` | Checks email uniqueness, hashes password, stores bcrypt OTP, fires `confirmEmail` event |
+| `POST /auth/login` | Verifies credentials and `confirmedAt` guard, issues access + refresh tokens |
+| `PATCH /auth/confirm-email` | Verifies OTP, then atomically `$set confirmedAt` + `$unset confirmEmailOtp` |
 
 ---
 
@@ -112,9 +158,9 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 | Auth | JWT (access & refresh tokens) |
 | Security | CORS · Helmet · express-rate-limit |
 | Password | bcrypt |
+| Email | Nodemailer (Gmail SMTP) |
 | File Upload | Multer + AWS S3 |
 | Real-Time | Socket.io |
-| Email | Nodemailer (Gmail SMTP) |
 | Config | dotenv |
 
 ---
@@ -128,16 +174,16 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 | `_id` | ObjectId | MongoDB primary key |
 | `firstName` | String | Required · 2–25 chars |
 | `lastName` | String | Required · 2–25 chars |
-| `username` | Virtual | Getter/setter that combines first and last name |
+| `username` | Virtual | Getter/setter — combines `firstName` + `lastName` |
 | `email` | String | Required · Unique index |
 | `password` | String | Required · bcrypt hashed |
-| `phone` | String | Optional · Egyptian format validation |
+| `phone` | String | Optional · Egyptian format (`010 / 011 / 012 / 015`) |
 | `address` | String | Optional |
-| `gender` | String | `male` / `female` · Default: `male` |
-| `role` | String | `user` / `admin` · Default: `user` |
-| `confirmedAt` | Date | Email verification timestamp · set on OTP confirmation |
-| `confirmEmailOtp` | String | Hashed OTP for email verification · unset after confirmation |
-| `resetPasswordOtp` | String | Hashed OTP for password reset · unset after reset |
+| `gender` | `GenderEnum` | `male` / `female` · Default: `male` |
+| `role` | `RoleEnum` | `user` / `admin` · Default: `user` |
+| `confirmedAt` | Date | Set on OTP confirmation |
+| `confirmEmailOtp` | String | Hashed OTP · unset after confirmation |
+| `resetPasswordOtp` | String | Hashed OTP · unset after reset |
 | `changeCredentialsTime` | Date | Updated on password change · invalidates prior sessions |
 | `createdAt` | Date | Auto-generated via `timestamps` |
 | `updatedAt` | Date | Auto-updated via `timestamps` |
@@ -162,29 +208,29 @@ SOCIAL-MEDIA-REST-API/
 │   │   │   └── User.model.ts              # IUser interface, enums, schema, HUserDocument type
 │   │   └── repository/
 │   │       ├── database.repository.ts     # Abstract generic Mongoose repository
-│   │       └── user.repository.ts         # User-specific repository extending the base
+│   │       └── user.repository.ts         # User-specific repository
 │   ├── middleware/
-│   │   ├── authentication.middleware.ts   # JWT auth middleware — injects user + decoded into req
-│   │   └── validation.middleware.ts       # Generic Zod validation middleware + generalFields
+│   │   ├── authentication.middleware.ts   # JWT auth — injects user + decoded into req
+│   │   └── validation.middleware.ts       # Generic Zod validation + generalFields
 │   ├── modules/
 │   │   └── auth/
-│   │       ├── auth.controller.ts         # Route definitions — signup, login, confirm-email
-│   │       ├── auth.service.ts            # Business logic — signup, login, confirmEmail handlers
-│   │       ├── auth.validation.ts         # Zod schemas for signup, login, confirmEmail
+│   │       ├── auth.controller.ts         # Route definitions
+│   │       ├── auth.service.ts            # Business logic — signup, login, confirmEmail
+│   │       ├── auth.validation.ts         # Zod schemas
 │   │       └── auth.dto.ts                # Input types inferred from Zod schemas
 │   ├── utils/
 │   │   ├── email/
-│   │   │   ├── send.email.ts              # Nodemailer transporter + sendEmail function
-│   │   │   └── verify.template.email.ts  # Dark-mode HTML OTP email template
+│   │   │   ├── send.email.ts              # Nodemailer transporter
+│   │   │   └── verify.template.email.ts  # Dark-mode HTML OTP template
 │   │   ├── event/
-│   │   │   └── email.event.ts             # EventEmitter — confirmEmail event handler
+│   │   │   └── email.event.ts             # EventEmitter — confirmEmail handler
 │   │   ├── response/
-│   │   │   └── error.response.ts          # Exception classes + globalErrorHandling middleware
+│   │   │   └── error.response.ts          # Exception classes + globalErrorHandling
 │   │   ├── security/
-│   │   │   ├── hash.security.ts           # bcrypt generateHash + compareHash
-│   │   │   └── token.security.ts          # JWT generate, verify, decode, createLoginCredentials
-│   │   └── otp.ts                         # generateOtp — random 6-digit OTP + bcrypt hash
-│   ├── app.controller.ts                  # Express bootstrap — middleware stack, routing
+│   │   │   ├── hash.security.ts           # bcrypt helpers
+│   │   │   └── token.security.ts          # JWT utilities + login credentials
+│   │   └── otp.ts                         # OTP generation + hashing
+│   ├── app.controller.ts                  # Express bootstrap
 │   └── index.ts                           # Entry point
 ├── .env
 ├── .env.example
@@ -198,15 +244,17 @@ SOCIAL-MEDIA-REST-API/
 
 ## Security Design
 
-- **Helmet** — Secure HTTP headers applied to every response
-- **CORS** — Enabled globally
-- **Rate Limiting** — 200 requests per hour per IP; excess requests return `429` with a JSON error body
-- **Zod** — Strict schema validation on every request boundary; unknown fields are rejected outright
-- **Password Policy** — Minimum 8 characters; requires uppercase, lowercase, digit, and special character
-- **Phone Validation** — Egyptian numbers only (`010 / 011 / 012 / 015`)
-- **OTP Security** — 6-digit numeric OTPs are bcrypt-hashed before storage and unset from the document after use
-- **JWT Dual-Token** — Separate access and refresh tokens with role-aware signing keys (`Bearer` for users, `System` for admins)
-- **Environment-Aware Error Reporting** — Stack traces exposed only in `DEV` mode; production responses reveal no internal details
+| Concern | Implementation |
+|---|---|
+| Secure Headers | Helmet applied globally |
+| CORS | Enabled on all routes |
+| Rate Limiting | 200 req/hr per IP · `429` on excess |
+| Input Validation | Zod strict schemas · unknown fields rejected |
+| Password Policy | Min 8 chars · uppercase + lowercase + digit + special char |
+| Phone Validation | Egyptian numbers only (`010 / 011 / 012 / 015`) |
+| OTP Security | bcrypt-hashed at rest · unset from document after use |
+| JWT Strategy | Dual-token (access + refresh) · role-aware signing keys |
+| Error Exposure | Stack traces in `DEV` only · production responses reveal no internals |
 
 ---
 
@@ -241,16 +289,16 @@ SOCIAL-MEDIA-REST-API/
 
 | Field | Rules |
 |---|---|
-| `username` | Required · must be exactly two words (first and last name) · 3–20 chars |
+| `username` | Required · exactly two words (first + last name) · 3–20 chars |
 | `email` | Required · valid email format |
-| `password` | Required · min 8 chars · must include uppercase, lowercase, digit, and special character |
-| `phone` | Required · Egyptian numbers only: `010 / 011 / 012 / 015` |
+| `password` | Required · min 8 chars · uppercase + lowercase + digit + special char |
+| `phone` | Required · Egyptian numbers only (`010 / 011 / 012 / 015`) |
 
 **Responses**
 
 | Status | Description |
 |---|---|
-| `201` | User registered — OTP sent to email for verification |
+| `201` | Registered — OTP sent to email |
 | `400` | Validation error |
 | `409` | Email already registered |
 
@@ -275,7 +323,7 @@ SOCIAL-MEDIA-REST-API/
 
 | Status | Description |
 |---|---|
-| `200` | Login successful — returns `access_token` and `refresh_token` |
+| `200` | Returns `access_token` and `refresh_token` |
 | `400` | Validation error |
 | `404` | Invalid credentials or email not verified |
 
@@ -323,61 +371,48 @@ The following modules represent the planned scope of the project. Built incremen
 
 ### 👤 1. User Profile & Role Management
 
-Features related to managing user data, access tiers, and custom metadata.
-
-- **Role-Based Access Control (RBAC)** — Detecting user roles and signature levels; admin dashboard management using `Promise.allSettled`; dynamically changing a user's system role
-- **Profile & Cover Image Management** — Uploading and updating profile pictures and cover photos; automated cleanup via Node events to delete old images on replacement
-- **Global Request Object Enhancement** — Extending the Express `Request` interface to inject authenticated user data and authorization metadata seamlessly into route handlers
+- **Role-Based Access Control (RBAC)** — Role detection and signature-level enforcement; admin dashboard using `Promise.allSettled`; dynamic role updates
+- **Profile & Cover Image Management** — Upload and replace profile/cover photos with automated old-image cleanup via Node events
+- **Request Object Enhancement** — Extending Express `Request` to carry authenticated user data and authorization metadata into route handlers
 
 ---
 
 ### 📰 2. Feed & Post System
 
-The core content engine of the application, managing user posts and feed optimization.
-
-- **Post Creation & Validation** — Building post data models and implementing request validation before publishing
-- **Post Availability Control** — Managing public visibility states and structural access conditions for posts
-- **Post Modification** — Updating posts using optimized MongoDB/Mongoose Aggregation Pipelines
-- **Feed Pagination** — High-performance post retrieval using pagination to limit payload sizes and boost loading speeds
-- **Engagement Metrics** — Like and Unlike capabilities on posts via automated database hooks
+- **Post Creation & Validation** — Post data models with full request validation before publishing
+- **Visibility Control** — Public/private post states and structural access conditions
+- **Post Updates** — Optimized modifications via MongoDB Aggregation Pipelines
+- **Feed Pagination** — High-performance retrieval with cursor-based pagination
+- **Engagement** — Like/Unlike on posts via automated database hooks
 
 ---
 
 ### 💬 3. Comment & Interaction System
 
-Features that allow users to converse and engage underneath published content.
-
-- **Multi-Level Commenting** — Top-level comments on posts; replies on comments; nested replies on existing replies
-- **Route Parameter Merging** — Leveraging Express `mergeParams` to cleanly handle nested routing (e.g., `/posts/:postId/comments`)
-- **Optimized Performance Queries** — Fetching posts with associated comments using Virtual Populate and streaming techniques
+- **Multi-Level Commenting** — Top-level comments, replies on comments, and nested replies
+- **Nested Routing** — Express `mergeParams` for clean `/posts/:postId/comments` routing
+- **Optimized Fetching** — Posts with comments via Virtual Populate and streaming
 
 ---
 
 ### 🤝 4. Social Connections & Real-Time Chat
 
-The networking layer, transitioning the application from static data into live, real-time interactivity.
-
-- **Friendship Lifecycle** — Send, receive, accept, and process friend requests between users
-- **Real-Time Architecture** — Full Socket.io integration for persistent, bidirectional communication
-- **Authenticated Handshakes** — Securing socket connections during initial handshake with specialized WebSocket error handling
-- **Event-Driven Communication** — Advanced dispatching patterns: targeted emit, broadcast, `io.emit` (global), and io-except-emit
-- **Multiplexing (Namespaces)** — Splitting socket traffic into dedicated channels to isolate chat from notifications
-- **Delivery Acknowledgments (ACK)** — Socket acknowledgments for reliable message delivery
-- **Chat User Directory** — Fetching active chat participants matched with real-time statuses and profile imagery
+- **Friendship Lifecycle** — Send, receive, and accept friend requests
+- **Socket.io Integration** — Persistent bidirectional communication with authenticated handshakes
+- **Event Dispatching** — Targeted emit, broadcast, `io.emit`, and io-except-emit patterns
+- **Namespaces** — Isolated channels for chat and notifications
+- **Delivery ACKs** — Socket acknowledgments for reliable message delivery
 
 ---
 
 ### ☁️ 5. Cloud Storage & Asset Management (AWS S3)
 
-The file processing pipeline built to handle media uploads efficiently without blocking server execution.
-
-- **Multer Storage Architecture** — Disk Storage vs Memory Storage evaluation; temporary OS staging for large file offloading
-- **File Constraints** — Hard enforcement of file size limits and extension type validation
-- **AWS S3 Bucket Integration** — Secure cloud bucket configuration
-- **Optimized Upload Mechanics** — Standard uploads via `PutObjectCommand`; chunked processing for large assets
-- **Secure Access via Pre-signed URLs** — `preUploadSignedUrl` for direct client-to-S3 uploads; `getAsset` pre-signed URLs for secure private asset retrieval
-- **File & Folder Purging** — Single deletion, batch deletion, and directory purging using S3 prefix-matching patterns
-- **Soft vs Hard Deletion** — Balancing data safety with permanent cleanup using soft-restore logic alongside definitive hard deletes
+- **Multer Architecture** — Disk vs Memory Storage evaluation with OS staging for large files
+- **File Constraints** — Hard limits on file size and extension type
+- **S3 Integration** — Standard `PutObjectCommand` uploads and chunked processing for large assets
+- **Pre-signed URLs** — `preUploadSignedUrl` for direct client-to-S3 uploads; `getAsset` for secure private retrieval
+- **Deletion Patterns** — Single, batch, and prefix-based directory purging
+- **Soft vs Hard Delete** — Restore logic alongside definitive permanent cleanup
 
 ---
 
