@@ -111,7 +111,7 @@ Extracts and verifies the `Authorization` header, then injects the hydrated `use
 Event-driven email dispatch fully decoupled from service logic.
 
 - **`sendEmail`** — Nodemailer Gmail SMTP transporter; enforces content presence; injects sender identity from env
-- **`emailTemplate`** — Dark-mode HTML email with embedded OTP, 2-minute expiry notice, and branded header
+- **`emailTemplate`** — Dark-mode HTML email with embedded OTP, and branded header
 - **`emailEvent`** — Node.js `EventEmitter`; the `confirmEmail` listener composes subject, HTML, and plain-text body then calls `sendEmail`
 
 **OTP Email Preview**
