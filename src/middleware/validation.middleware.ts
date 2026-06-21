@@ -57,4 +57,5 @@ export const generalFields = {
     .min(3, { error: "User Name must be at least 3 characters" })
     .max(20, { error: "User Name must be at most 20 characters" }),
   phone: z.string().regex(new RegExp("^01[0125][0-9]{8}$")),
+  otp: z.string().regex(/^\d{6}$/),
 };

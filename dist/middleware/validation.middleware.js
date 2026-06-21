@@ -37,4 +37,5 @@ exports.generalFields = {
         .min(3, { error: "User Name must be at least 3 characters" })
         .max(20, { error: "User Name must be at most 20 characters" }),
     phone: zod_1.z.string().regex(new RegExp("^01[0125][0-9]{8}$")),
+    otp: zod_1.z.string().regex(/^\d{6}$/),
 };

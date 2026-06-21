@@ -1,4 +1,4 @@
-import { Schema, Types, models, model } from "mongoose";
+import { Schema, Types, models, model, HydratedDocument } from "mongoose";
 
 export enum RoleEnum {
   user = "user",
@@ -60,3 +60,4 @@ userSchema
   });
 
 export const UserModel = models.User || model<IUser>("User", userSchema);
+export type HUserDocument = HydratedDocument<IUser>;
