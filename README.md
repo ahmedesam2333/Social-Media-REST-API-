@@ -40,31 +40,63 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 
 **Core flow:**
 
-1. A user registers, verifies their email via OTP, and receives a JWT session
-2. They build a profile with image and cover uploads stored on AWS S3
-3. They publish posts, control visibility, and interact with others' content via likes and comments
-4. They send and accept friend requests to build their social graph
-5. They open real-time chat sessions powered by Socket.io
-6. Admins manage roles and accounts via a protected dashboard
+1. A user registers and receives a 6-digit OTP via email for verification
+2. They confirm their email using the OTP, then authenticate with JWT credentials
+3. They build a profile with image and cover uploads stored on AWS S3
+4. They publish posts, control visibility, and interact with others' content via likes and comments
+5. They send and accept friend requests to build their social graph
+6. They open real-time chat sessions powered by Socket.io
+7. Admins manage roles and accounts via a protected dashboard
 
 ---
 
 ## Implemented Features
 
-### 🔐 Authentication & Request Validation
+### 🔐 Authentication & Security
 
 **Express Application Bootstrap**
 - Initialized Express application with a modular middleware stack and centralized routing via `app.controller.ts`
 - Configured global security middleware: Helmet, CORS, and rate limiting (200 req/hr per IP)
 
 **Generic Request Validation Middleware**
-- Built a reusable `validateRequest` middleware that validates any combination of `body`, `params`, or `query` against Zod schemas
-- Centralized validation logic at the request boundary — invalid input is rejected before reaching controllers
-- Returns `400 Validation Error` responses with detailed field-level error messages
+- Built a reusable `validation` middleware that validates any combination of `body`, `params`, or `query` against Zod schemas
+- Centralized `generalFields` exports shared field schemas: `email`, `password`, `username`, `phone`, and `otp`
+- Returns `400 Validation Error` responses with structured field-level error messages including path and message per issue
 
-**Global Error Handling**
-- Centralized `globalErrorHandling` middleware using custom exception classes for structured error responses
-- Uniform JSON error responses across all routes with consistent error formatting
+**Authentication Middleware**
+- `authentication` middleware extracts and validates the `Authorization` header, decodes the JWT, and injects the hydrated `user` document and `decoded` payload into the Express `Request` object via `IAuthReq`
+- Supports role-aware token decoding using `SignatureLevelEnum` (`Bearer` for users, `System` for admins)
+
+**Repository Pattern — `DB/repository/`**
+- Abstract `DatabaseRepository<TDocument>` base class wraps Mongoose operations (`create`, `findOne`, `updateOne`) with fully typed generics — `QueryFilter`, `ProjectionType`, `UpdateQuery`, and `PopulateOptions`
+- `updateOne` automatically increments `__v` on every write for optimistic concurrency tracking
+- `UserRepository` extends the base with a `createUser` method that destructures the first created document and throws `BadRequestException` on failure
+
+**JWT Token System — `utils/security/token.security.ts`**
+- `generateToken` and `verifyToken` wrap `jsonwebtoken` with typed payloads and configurable secrets and expiry via environment variables
+- `detectSignatureLevel` maps user roles to `SignatureLevelEnum`, selecting the appropriate key pair
+- `getSignatures` resolves the correct access and refresh secret pair based on signature level (user vs admin)
+- `createLoginCredentials` issues both an access token and a refresh token for the authenticated user
+- `decodeToken` parses the `Authorization` header, verifies the token against the matching signature, validates payload shape, and returns the full hydrated user document alongside the decoded JWT
+
+**Password & OTP Hashing — `utils/security/hash.security.ts` · `utils/otp.ts`**
+- `generateHash` and `compareHash` wrap `bcrypt` with a configurable salt round from environment config
+- `generateOtp` produces a cryptographically random 6-digit numeric OTP and returns both the plain value (for delivery) and a bcrypt hash (for storage)
+
+**Structured Exception Hierarchy — `utils/response/error.response.ts`**
+- `ApplicationException` base class with `statusCode`, `cause`, and stack capture
+- Named subclasses: `BadRequestException` (400), `NotFoundException` (404), `ConflictException` (409), `UnauthorizedException` (401), `ForbiddenException` (403)
+- `globalErrorHandling` Express error middleware returns uniform JSON responses; stack traces are exposed only in `DEV` mode
+
+**Transactional Email System — `utils/email/` · `utils/event/`**
+- `sendEmail` configures a Nodemailer Gmail SMTP transporter, enforces content presence, and injects the sender identity from environment config
+- `emailTemplate` renders a fully styled dark-mode HTML email with the OTP code embedded and a 2-minute expiry notice
+- `emailEvent` is a Node.js `EventEmitter` that decouples email dispatch from service logic — the `confirmEmail` event handler populates subject, HTML, and plain-text body before calling `sendEmail`
+
+**Auth Module — `modules/auth/`**
+- `signup` — validates input, checks for email conflicts, hashes the password, generates and stores a hashed OTP, creates the user record via `UserRepository`, and fires the `confirmEmail` event
+- `login` — validates credentials, checks `confirmedAt` existence, compares the bcrypt password, and issues access and refresh tokens via `createLoginCredentials`
+- `confirmEmail` — validates the email and OTP, verifies the hashed OTP, then atomically sets `confirmedAt` and unsets `confirmEmailOtp` in a single `updateOne` call
 
 ---
 
@@ -79,8 +111,10 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 | Validation | Zod |
 | Auth | JWT (access & refresh tokens) |
 | Security | CORS · Helmet · express-rate-limit |
+| Password | bcrypt |
 | File Upload | Multer + AWS S3 |
 | Real-Time | Socket.io |
+| Email | Nodemailer (Gmail SMTP) |
 | Config | dotenv |
 
 ---
@@ -101,12 +135,12 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 | `address` | String | Optional |
 | `gender` | String | `male` / `female` · Default: `male` |
 | `role` | String | `user` / `admin` · Default: `user` |
-| `confirmedAt` | Date | Email verification timestamp |
-| `confirmEmailOtp` | String | Hashed OTP for email verification · removed after confirmation |
-| `resetPasswordOtp` | String | Hashed OTP for password reset · removed after reset |
+| `confirmedAt` | Date | Email verification timestamp · set on OTP confirmation |
+| `confirmEmailOtp` | String | Hashed OTP for email verification · unset after confirmation |
+| `resetPasswordOtp` | String | Hashed OTP for password reset · unset after reset |
 | `changeCredentialsTime` | Date | Updated on password change · invalidates prior sessions |
-| `createdAt` | Date | Auto-generated timestamp |
-| `updatedAt` | Date | Auto-updated on any modification |
+| `createdAt` | Date | Auto-generated via `timestamps` |
+| `updatedAt` | Date | Auto-updated via `timestamps` |
 
 **Enums**
 
@@ -123,22 +157,35 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 SOCIAL-MEDIA-REST-API/
 ├── src/
 │   ├── DB/
-│   │   └── db.connection.ts
-│   │   └── models/
-│   │       └── User.model.ts          # User schema, enums, interfaces
+│   │   ├── db.connection.ts
+│   │   ├── models/
+│   │   │   └── User.model.ts              # IUser interface, enums, schema, HUserDocument type
+│   │   └── repository/
+│   │       ├── database.repository.ts     # Abstract generic Mongoose repository
+│   │       └── user.repository.ts         # User-specific repository extending the base
 │   ├── middleware/
-│   │   └── validation.middleware.ts   # Generic Zod validation middleware + shared field schemas
+│   │   ├── authentication.middleware.ts   # JWT auth middleware — injects user + decoded into req
+│   │   └── validation.middleware.ts       # Generic Zod validation middleware + generalFields
 │   ├── modules/
 │   │   └── auth/
-│   │       ├── auth.controller.ts     # Route definitions + middleware wiring
-│   │       ├── auth.service.ts        # Business logic + token/password operations
-│   │       ├── auth.validation.ts     # Zod schemas (login, signup)
-│   │       └── auth.dto.ts            # Input type interfaces (inferred from Zod)
+│   │       ├── auth.controller.ts         # Route definitions — signup, login, confirm-email
+│   │       ├── auth.service.ts            # Business logic — signup, login, confirmEmail handlers
+│   │       ├── auth.validation.ts         # Zod schemas for signup, login, confirmEmail
+│   │       └── auth.dto.ts                # Input types inferred from Zod schemas
 │   ├── utils/
-│   │   └── response/
-│   │       └── error.response.ts      # Exception classes + global error handler
-│   ├── app.controller.ts              # Express bootstrap — middleware stack, routing
-│   └── index.ts                       # Entry point
+│   │   ├── email/
+│   │   │   ├── send.email.ts              # Nodemailer transporter + sendEmail function
+│   │   │   └── verify.template.email.ts  # Dark-mode HTML OTP email template
+│   │   ├── event/
+│   │   │   └── email.event.ts             # EventEmitter — confirmEmail event handler
+│   │   ├── response/
+│   │   │   └── error.response.ts          # Exception classes + globalErrorHandling middleware
+│   │   ├── security/
+│   │   │   ├── hash.security.ts           # bcrypt generateHash + compareHash
+│   │   │   └── token.security.ts          # JWT generate, verify, decode, createLoginCredentials
+│   │   └── otp.ts                         # generateOtp — random 6-digit OTP + bcrypt hash
+│   ├── app.controller.ts                  # Express bootstrap — middleware stack, routing
+│   └── index.ts                           # Entry point
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -157,7 +204,9 @@ SOCIAL-MEDIA-REST-API/
 - **Zod** — Strict schema validation on every request boundary; unknown fields are rejected outright
 - **Password Policy** — Minimum 8 characters; requires uppercase, lowercase, digit, and special character
 - **Phone Validation** — Egyptian numbers only (`010 / 011 / 012 / 015`)
-- **Environment-Aware Error Reporting** — Error stack traces are exposed only in `DEV` mode; production responses reveal no internal details
+- **OTP Security** — 6-digit numeric OTPs are bcrypt-hashed before storage and unset from the document after use
+- **JWT Dual-Token** — Separate access and refresh tokens with role-aware signing keys (`Bearer` for users, `System` for admins)
+- **Environment-Aware Error Reporting** — Stack traces exposed only in `DEV` mode; production responses reveal no internal details
 
 ---
 
@@ -192,7 +241,7 @@ SOCIAL-MEDIA-REST-API/
 
 | Field | Rules |
 |---|---|
-| `username` | Required · must be exactly two words (first and last name) |
+| `username` | Required · must be exactly two words (first and last name) · 3–20 chars |
 | `email` | Required · valid email format |
 | `password` | Required · min 8 chars · must include uppercase, lowercase, digit, and special character |
 | `phone` | Required · Egyptian numbers only: `010 / 011 / 012 / 015` |
@@ -201,8 +250,9 @@ SOCIAL-MEDIA-REST-API/
 
 | Status | Description |
 |---|---|
-| `201` | User registered successfully |
+| `201` | User registered — OTP sent to email for verification |
 | `400` | Validation error |
+| `409` | Email already registered |
 
 </details>
 
@@ -225,8 +275,41 @@ SOCIAL-MEDIA-REST-API/
 
 | Status | Description |
 |---|---|
-| `200` | Login successful |
+| `200` | Login successful — returns `access_token` and `refresh_token` |
 | `400` | Validation error |
+| `404` | Invalid credentials or email not verified |
+
+</details>
+
+---
+
+<details>
+<summary><code>PATCH</code> &nbsp; <code>/auth/confirm-email</code> &nbsp;—&nbsp; Verify email with OTP</summary>
+
+<br/>
+
+**Body**
+```json
+{
+  "email": "ahmed@example.com",
+  "otp": "483920"
+}
+```
+
+**Validation**
+
+| Field | Rules |
+|---|---|
+| `email` | Required · valid email format |
+| `otp` | Required · exactly 6 digits |
+
+**Responses**
+
+| Status | Description |
+|---|---|
+| `200` | Email verified — user may now log in |
+| `400` | Invalid or expired OTP |
+| `404` | Email not found or already confirmed |
 
 </details>
 
