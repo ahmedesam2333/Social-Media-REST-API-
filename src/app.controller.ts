@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import authController from "./modules/auth/auth.controller";
+import userController from "./modules/user/user.controller";
 import { globalErrorHandling } from "./utils/response/error.response";
 import connectDB from "./DB/db.connection.js";
 
@@ -29,6 +30,7 @@ const bootstrap = async (): Promise<void> => {
 
   //Routes
   app.use("/auth", authController);
+  app.use("/user", userController);
 
   //Invalid Routing
   app.all("{/*dummy}", (req: Request, res: Response) => {

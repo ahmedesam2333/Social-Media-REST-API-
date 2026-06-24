@@ -1,15 +1,13 @@
 import type { NextFunction, Request, Response } from "express";
-import { decodeToken } from "../utils/security/token.security.js";
-import { BadRequestException } from "../utils/response/error.response.js";
-import { HUserDocument } from "../DB/models/User.model.js";
-import { JwtPayload } from "jsonwebtoken";
+import { decodeToken, TokenEnum } from "../utils/security/token.security.js";
+import {
+  BadRequestException,
+  ForbiddenException,
+} from "../utils/response/error.response.js";
+import { RoleEnum } from "../DB/models/User.model.js";
 
-interface IAuthReq extends Request {
-  user: HUserDocument;
-  decoded: JwtPayload;
-}
-export const authentication = () => {
-  return async (req: IAuthReq, res: Response, next: NextFunction) => {
+export const authentication = (tokenType: TokenEnum = TokenEnum.access) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.headers.authorization) {
       throw new BadRequestException("Validation Error", {
         key: "headers",
@@ -21,8 +19,35 @@ export const authentication = () => {
     }
     const { user, decoded } = await decodeToken({
       authorization: req.headers.authorization,
+      tokenType,
     });
 
+    req.user = user;
+    req.decoded = decoded;
+    next();
+  };
+};
+
+export const authorization = (
+  accessRoles: RoleEnum[] = [],
+  tokenType: TokenEnum = TokenEnum.access,
+) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.headers.authorization) {
+      throw new BadRequestException("Validation Error", {
+        key: "headers",
+        issues: [
+          { path: "authorization" },
+          { message: "missing authorization" },
+        ],
+      });
+    }
+    const { user, decoded } = await decodeToken({
+      authorization: req.headers.authorization,
+      tokenType,
+    });
+    if (!accessRoles.includes(user.role))
+      throw new ForbiddenException("Not Authorized Account");
     req.user = user;
     req.decoded = decoded;
     next();
