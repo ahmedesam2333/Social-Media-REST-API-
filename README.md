@@ -45,7 +45,7 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 2. Confirms email with OTP → gains access to login
 3. Authenticates → receives JWT access & refresh tokens
 4. Refreshes session via refresh token → old token revoked, new pair issued
-5. Builds profile, uploads profile image to AWS S3
+5. Builds profile, uploads profile image to AWS S3 via pre-signed URL
 6. Publishes posts, interacts with content
 7. Sends friend requests, opens real-time chat via Socket.io
 8. Admins manage roles and accounts via a protected dashboard
@@ -58,6 +58,8 @@ A full-featured social networking REST API built with TypeScript and Node.js. Us
 
 Initialized Express with a modular middleware stack and centralized routing via `app.controller.ts`. Global middleware applied: **Helmet** (secure headers), **CORS**, and **rate limiting** (200 req/hr per IP, `429` on excess).
 
+A global utility route for fetching pre-signed GET URLs is registered directly on the app: `GET /upload/signed/*path` — resolves the S3 key from the wildcard path segment and returns a time-limited signed URL for secure asset retrieval.
+
 ---
 
 ### 🗄️ Repository Pattern — `DB/repository/`
@@ -69,6 +71,7 @@ Abstract `DatabaseRepository<TDocument>` wraps Mongoose with fully typed generic
 | `create` | Inserts documents with optional `CreateOptions` |
 | `findOne` | Supports projection, lean mode, and populate |
 | `updateOne` | Applies update and auto-increments `__v` for optimistic concurrency |
+| `findByIdAndUpdate` | Finds by `_id`, applies update with `$inc: { __v: 1 }`, returns the updated document; defaults to `returnDocument: "after"` |
 
 `UserRepository` extends the base with `createUser` — unwraps the first result and throws `BadRequestException` on failure.
 
@@ -121,9 +124,9 @@ Two separate middleware factories for different access patterns:
 
 ---
 
-### ✉️ Transactional Email — `utils/email/` · `utils/event/`
+### ✉️ Transactional Email — `utils/email/`
 
-Event-driven email dispatch fully decoupled from service logic.
+Event-driven email dispatch fully decoupled from service logic. All email utilities and the event emitter are co-located in the `utils/email/` folder.
 
 - **`sendEmail`** — Nodemailer Gmail SMTP transporter; enforces content presence; injects sender identity from env
 - **`emailTemplate`** — Dark-mode HTML email with embedded OTP and branded header
@@ -170,7 +173,7 @@ Ensures `req.user` and `req.decoded` are fully typed across all route handlers a
 
 ### ☁️ File Upload — `utils/multer/` · AWS S3
 
-Multer-based upload pipeline with configurable storage strategy and AWS S3 integration.
+Multer-based upload pipeline with configurable storage strategy, AWS S3 integration, pre-signed URL support, and an event-driven image lifecycle system.
 
 **`cloud.multer.ts`**
 
@@ -186,6 +189,23 @@ Multer-based upload pipeline with configurable storage strategy and AWS S3 integ
 |---|---|
 | `s3Config()` | Constructs an `S3Client` from env credentials (`AWS_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_ACCESS_KEY`) |
 | `uploadFile({ file, path, storageApproach, Bucket, ACL })` | Issues `PutObjectCommand`; key format: `{APP_NAME}/{path}/{uuid}_{filename}`; supports both memory buffer and disk stream bodies; returns the generated S3 key |
+| `uploadLargeFile({ file, path, storageApproach, Bucket, ACL })` | Uses `@aws-sdk/lib-storage` `Upload` for multipart streaming; emits `httpUploadProgress` events; returns the final S3 key |
+| `uploadFiles({ files, path, isLarge, ... })` | Parallel upload of multiple files via `Promise.all`; delegates to `uploadFile` or `uploadLargeFile` based on `isLarge` flag |
+| `createUploadPreSignedLink({ ContentType, originalname, path, expiresIn })` | Issues a `PutObjectCommand` pre-signed URL for direct client-to-S3 upload; returns both the signed `url` and the pre-computed `key` |
+| `createGetPreSignedLink({ Key, expiresIn, download })` | Issues a `GetObjectCommand` pre-signed URL for secure private asset retrieval; supports `Content-Disposition: attachment` for forced download |
+| `getFile({ Key, Bucket })` | Fetches an S3 object directly — used internally for upload verification |
+| `deleteFile({ Key, Bucket })` | Issues `DeleteObjectCommand` to remove a single object |
+| `deleteFiles({ urls, Bucket, Quiet })` | Batch-deletes multiple objects via `DeleteObjectsCommand` |
+| `listDirectoryFiles({ path, Bucket })` | Lists all objects under a given prefix via `ListObjectsV2Command` |
+| `deleteFolderByPrefix({ path, Bucket, Quiet })` | Lists then batch-deletes all objects under a prefix; throws `BadRequestException` on empty directory |
+
+**`s3.events.ts`**
+
+Event-driven S3 lifecycle management via a dedicated `EventEmitter`. Decouples upload verification and old-image cleanup from the request/response cycle.
+
+| Event | Payload | Behavior |
+|---|---|---|
+| `trackProfileImageUpload` | `{ userId, key, oldKey, expiresIn }` | After `expiresIn` ms, verifies the new key exists in S3 via `getFile`; on success unsets `tempProfileImage` and deletes the old key; on `NoSuchKey` error rolls back `profileImage` to the old key and unsets `tempProfileImage` |
 
 **Profile Image on AWS S3**
 
@@ -207,7 +227,7 @@ Multer-based upload pipeline with configurable storage strategy and AWS S3 integ
 
 ### 👤 User Module — `modules/user/`
 
-Handles authenticated user operations: profile retrieval, session management, and profile image uploads.
+Handles authenticated user operations: profile retrieval, session management, and profile image uploads via pre-signed URLs.
 
 **Authorization map — `user.authorization.ts`**
 
@@ -220,7 +240,7 @@ Handles authenticated user operations: profile retrieval, session management, an
 | `GET /user/` | Returns the authenticated user's document and decoded JWT payload |
 | `POST /user/refresh-token` | Verifies refresh token → revokes it → issues a new access + refresh pair |
 | `POST /user/logout` | Single-session (`only`) revokes current `jti`; all-session (`all`) sets `changeCredentialsTime` to invalidate every prior token |
-| `PATCH /user/profile-image` | Accepts `image/jpeg` or `image/png` (max 2 MB) via `multipart/form-data`; uploads to S3 at `users/{userId}/{uuid}_{filename}`; returns the S3 key |
+| `PATCH /user/profile-image` | Accepts `ContentType` + `originalname` in body; generates a pre-signed S3 upload URL; persists the new key and stashes the old key as `tempProfileImage`; fires `trackProfileImageUpload` event to verify upload and clean up old image |
 
 **Logout modes**
 
@@ -244,7 +264,7 @@ Handles authenticated user operations: profile retrieval, session management, an
 | Security | CORS · Helmet · express-rate-limit |
 | Password | bcrypt |
 | Email | Nodemailer (Gmail SMTP) |
-| File Upload | Multer (memory & disk) + AWS S3 (`@aws-sdk/client-s3`) |
+| File Upload | Multer (memory & disk) + AWS S3 (`@aws-sdk/client-s3` · `@aws-sdk/lib-storage` · `@aws-sdk/s3-request-presigner`) |
 | Real-Time | Socket.io |
 | Config | dotenv |
 
@@ -270,6 +290,8 @@ Handles authenticated user operations: profile retrieval, session management, an
 | `confirmEmailOtp` | String | Hashed OTP · unset after confirmation |
 | `resetPasswordOtp` | String | Hashed OTP · unset after reset |
 | `changeCredentialsTime` | Date | Updated on password change or all-session logout · invalidates prior sessions |
+| `profileImage` | String | S3 key of the active profile image |
+| `tempProfileImage` | String | S3 key of the previous profile image · held during upload verification · unset on confirmation or rollback |
 | `createdAt` | Date | Auto-generated via `timestamps` |
 | `updatedAt` | Date | Auto-updated via `timestamps` |
 
@@ -308,7 +330,7 @@ SOCIAL-MEDIA-REST-API/
 │   │   │   ├── User.model.ts                  # IUser interface, enums, schema, HUserDocument type
 │   │   │   └── Token.model.ts                 # IToken interface, schema, HTokenDocument type
 │   │   └── repository/
-│   │       ├── database.repository.ts         # Abstract generic Mongoose repository
+│   │       ├── database.repository.ts         # Abstract generic Mongoose repository (create, findOne, updateOne, findByIdAndUpdate)
 │   │       ├── user.repository.ts             # User-specific repository
 │   │       └── token.repository.ts            # Token (blocklist) repository
 │   ├── middleware/
@@ -329,12 +351,12 @@ SOCIAL-MEDIA-REST-API/
 │   ├── utils/
 │   │   ├── email/
 │   │   │   ├── send.email.ts                  # Nodemailer transporter
-│   │   │   └── verify.template.email.ts       # Dark-mode HTML OTP template
-│   │   ├── event/
+│   │   │   ├── verify.template.email.ts       # Dark-mode HTML OTP template
 │   │   │   └── email.event.ts                 # EventEmitter — confirmEmail handler
 │   │   ├── multer/
 │   │   │   ├── cloud.multer.ts                # Multer factory — StorageEnum, fileValidation, cloudFileUpload
-│   │   │   └── s3.config.ts                   # S3Client config + uploadFile utility
+│   │   │   ├── s3.config.ts                   # S3Client config + upload/delete/list/pre-signed URL utilities
+│   │   │   └── s3.events.ts                   # S3 EventEmitter — trackProfileImageUpload lifecycle handler
 │   │   ├── response/
 │   │   │   └── error.response.ts              # Exception classes + globalErrorHandling
 │   │   ├── security/
@@ -343,7 +365,7 @@ SOCIAL-MEDIA-REST-API/
 │   │   ├── types/
 │   │   │   └── request.express.ts             # Express Request type augmentation (user, decoded)
 │   │   └── otp.ts                             # OTP generation + hashing
-│   ├── app.controller.ts                      # Express bootstrap
+│   ├── app.controller.ts                      # Express bootstrap + GET /upload/signed/*path route
 │   └── index.ts                               # Entry point
 ├── .env
 ├── .env.example
@@ -369,7 +391,9 @@ SOCIAL-MEDIA-REST-API/
 | JWT Strategy | Dual-token (access + refresh) · role-aware signing keys · shared `jwtid` per session |
 | Token Revocation | Blocklist via `Token` collection — `jti` checked on every request; `all` logout sets `changeCredentialsTime` |
 | Authorization | Role-based middleware factory (`authorization(roles[])`) — throws `403` on mismatch |
-| File Uploads | MIME type allowlist · 2 MB hard limit · UUID-prefixed S3 keys scoped to `{APP}/{path}/` |
+| File Uploads | MIME type allowlist · 2 MB hard limit · UUID-prefixed S3 keys scoped to `{APP}/{path}/` · pre-signed URLs for direct client-to-S3 transfer |
+| S3 Asset Access | Private ACL by default · assets served only via time-limited pre-signed GET URLs |
+| Profile Image Safety | Old key held in `tempProfileImage` during upload window · event-driven rollback on failed upload verification |
 | Error Exposure | Stack traces in `DEV` only · production responses reveal no internals |
 
 ---
@@ -381,6 +405,41 @@ SOCIAL-MEDIA-REST-API/
 > 🔒 Protected routes require `Authorization: Bearer <token>`
 >
 > All routes return `400 Validation Error` on invalid input — omitted per endpoint for brevity.
+
+---
+
+### Upload — `/upload`
+
+<details>
+<summary><code>GET</code> &nbsp; <code>/upload/signed/*path</code> &nbsp;—&nbsp; Get a pre-signed URL for a private S3 asset</summary>
+
+<br/>
+
+**Path**
+
+| Segment | Description |
+|---|---|
+| `*path` | Full S3 key of the object (e.g. `Social Media REST API/users/6a38.../uuid_photo.jpg`) |
+
+**Behavior**
+
+Joins the wildcard path segments into a single S3 key and calls `createGetPreSignedLink`. Returns a time-limited signed URL that grants temporary read access to a private S3 object without exposing bucket credentials.
+
+**Responses**
+
+| Status | Description |
+|---|---|
+| `200` | Returns `{ url }` — time-limited pre-signed GET URL |
+| `400` | Path segment missing or URL generation failed |
+
+**Example Response**
+```json
+{
+  "url": "https://s3.amazonaws.com/bucket/Social Media REST API/users/6a38.../uuid_photo.jpg?X-Amz-Signature=..."
+}
+```
+
+</details>
 
 ---
 
@@ -562,7 +621,7 @@ SOCIAL-MEDIA-REST-API/
 ---
 
 <details>
-<summary><code>PATCH</code> &nbsp; <code>/user/profile-image</code> &nbsp;—&nbsp; Upload profile image 🔒</summary>
+<summary><code>PATCH</code> &nbsp; <code>/user/profile-image</code> &nbsp;—&nbsp; Upload profile image via pre-signed URL 🔒</summary>
 
 <br/>
 
@@ -571,20 +630,37 @@ SOCIAL-MEDIA-REST-API/
 | Header | Value |
 |---|---|
 | `Authorization` | `Bearer <access_token>` |
-| `Content-Type` | `multipart/form-data` |
+| `Content-Type` | `application/json` |
 
-**Form Fields**
+**Body**
+
+```json
+{
+  "ContentType": "image/jpeg",
+  "originalname": "AhmedEssam.jpg"
+}
+```
+
+**Validation**
 
 | Field | Rules |
 |---|---|
-| `image` | Required · `image/jpeg` or `image/png` · max 2 MB |
+| `ContentType` | Required · `image/jpeg` or `image/png` |
+| `originalname` | Required · original filename for S3 key generation |
+
+**Behavior**
+
+1. Generates a pre-signed S3 `PutObject` URL via `createUploadPreSignedLink`
+2. Persists the new S3 key to `profileImage` and stashes the current key in `tempProfileImage` via `findByIdAndUpdate`
+3. Emits `trackProfileImageUpload` — after `expiresIn` ms the event handler verifies the upload, unsets `tempProfileImage`, and deletes the old image; rolls back on `NoSuchKey`
+4. Returns the signed URL and key to the client for direct S3 upload
 
 **Responses**
 
 | Status | Description |
 |---|---|
-| `200` | Returns S3 key of the uploaded image |
-| `400` | Invalid file format or size exceeded |
+| `200` | Returns pre-signed upload URL and S3 key |
+| `400` | Failed to update user or generate pre-signed URL |
 | `401` | Missing or invalid token |
 
 **Example Response**
@@ -592,6 +668,7 @@ SOCIAL-MEDIA-REST-API/
 {
   "message": "Done",
   "data": {
+    "url": "https://s3.amazonaws.com/bucket/Social Media REST API/users/6a38.../uuid_AhmedEssam.jpg?X-Amz-Signature=...",
     "key": "Social Media REST API/users/6a3851a6e743d001e507d4db/733c16f6-f752-49f2-820b-20ccef6ac1f2_AhmedEssam.jpg"
   }
 }
@@ -610,7 +687,7 @@ The following modules represent the planned scope of the project. Built incremen
 ### 👤 1. User Profile & Role Management
 
 - **Role-Based Access Control (RBAC)** — Role detection and signature-level enforcement; admin dashboard using `Promise.allSettled`; dynamic role updates ✅ (authorization middleware complete)
-- **Profile & Cover Image Management** — Upload and replace profile/cover photos with automated old-image cleanup via Node events ✅ (profile image upload to S3 complete)
+- **Profile & Cover Image Management** — Pre-signed URL upload flow with event-driven old-image cleanup and rollback on failed verification ✅
 - **Request Object Enhancement** — Extending Express `Request` to carry authenticated user data and authorization metadata into route handlers ✅
 
 ---
@@ -648,8 +725,9 @@ The following modules represent the planned scope of the project. Built incremen
 - **Multer Architecture** — Disk vs Memory Storage with OS staging for large files ✅
 - **File Constraints** — Hard limits on file size and extension type ✅
 - **S3 Integration** — `PutObjectCommand` uploads supporting both memory buffer and disk stream ✅
-- **Pre-signed URLs** — `preUploadSignedUrl` for direct client-to-S3 uploads; `getAsset` for secure private retrieval
-- **Deletion Patterns** — Single, batch, and prefix-based directory purging
+- **Pre-signed URLs** — `createUploadPreSignedLink` for direct client-to-S3 uploads ✅ · `createGetPreSignedLink` for secure private retrieval ✅
+- **Large File Uploads** — Multipart streaming via `@aws-sdk/lib-storage` with progress tracking ✅
+- **Deletion Patterns** — Single, batch, and prefix-based directory purging ✅
 - **Soft vs Hard Delete** — Restore logic alongside definitive permanent cleanup
 
 ---
