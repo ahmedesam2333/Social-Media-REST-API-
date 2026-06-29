@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import Mail from "nodemailer/lib/mailer/index.js";
-import { sendEmail } from "../email/send.email.js";
-import { emailTemplate } from "../email/verify.template.email.js";
+import { sendEmail } from "./send.email.js";
+import { emailTemplate } from "./verify.template.email.js";
 
 export const emailEvent = new EventEmitter();
 

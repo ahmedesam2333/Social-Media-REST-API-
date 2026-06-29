@@ -15,7 +15,7 @@ import {
   compareHash,
   generateHash,
 } from "../../utils/security/hash.security.js";
-import { emailEvent } from "../../utils/event/email.event.js";
+import { emailEvent } from "../../utils/email/email.event.js";
 import generateOtp from "../../utils/otp.js";
 import {
   createLoginCredentials,

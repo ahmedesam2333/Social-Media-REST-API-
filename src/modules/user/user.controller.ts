@@ -29,10 +29,10 @@ router.post(
 router.patch(
   "/profile-image",
   authentication(),
-  cloudFileUpload({
-    validation: fileValidation.image,
-    storageApproach: StorageEnum.memory,
-  }).single("image"),
+  // cloudFileUpload({
+  //   validation: fileValidation.image,
+  //   storageApproach: StorageEnum.memory,
+  // }).single("image"),
   userService.profileImage,
 );
 

@@ -25,6 +25,8 @@ export interface IUser {
   createdAt: Date;
   updatedAt?: Date;
   changeCredentialsTime?: Date;
+  profileImage?: string;
+  tempProfileImage?: string;
 }
 
 const userSchema = new Schema<IUser>(
@@ -41,6 +43,8 @@ const userSchema = new Schema<IUser>(
     changeCredentialsTime: { type: Date },
     gender: { type: String, enum: GenderEnum, default: GenderEnum.male },
     role: { type: String, enum: RoleEnum, default: RoleEnum.user },
+    profileImage: String,
+    tempProfileImage: String,
   },
   {
     timestamps: true,

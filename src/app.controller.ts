@@ -5,8 +5,12 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import authController from "./modules/auth/auth.controller";
 import userController from "./modules/user/user.controller";
-import { globalErrorHandling } from "./utils/response/error.response";
+import {
+  BadRequestException,
+  globalErrorHandling,
+} from "./utils/response/error.response";
 import connectDB from "./DB/db.connection.js";
+import { createGetPreSignedLink } from "./utils/multer/s3.config.js";
 
 const bootstrap = async (): Promise<void> => {
   const app: Express = express();
@@ -31,6 +35,19 @@ const bootstrap = async (): Promise<void> => {
   //Routes
   app.use("/auth", authController);
   app.use("/user", userController);
+
+  app.get("/upload/signed/*path", async (req, res): Promise<Response> => {
+    const { path } = req.params as { path: string[] };
+    if (!path?.length) {
+      throw new BadRequestException("Fail to Get URL");
+    }
+
+    const Key = path.join("/");
+
+    const url = await createGetPreSignedLink({ Key });
+
+    return res.json({ url });
+  });
 
   //Invalid Routing
   app.all("{/*dummy}", (req: Request, res: Response) => {

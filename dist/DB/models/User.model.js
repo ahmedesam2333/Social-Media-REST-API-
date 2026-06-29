@@ -25,6 +25,7 @@ const userSchema = new mongoose_1.Schema({
     changeCredentialsTime: { type: Date },
     gender: { type: String, enum: GenderEnum, default: GenderEnum.male },
     role: { type: String, enum: RoleEnum, default: RoleEnum.user },
+    profileImage: String,
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

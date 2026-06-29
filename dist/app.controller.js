@@ -11,6 +11,7 @@ const auth_controller_1 = __importDefault(require("./modules/auth/auth.controlle
 const user_controller_1 = __importDefault(require("./modules/user/user.controller"));
 const error_response_1 = require("./utils/response/error.response");
 const db_connection_js_1 = __importDefault(require("./DB/db.connection.js"));
+const s3_config_js_1 = require("./utils/multer/s3.config.js");
 const bootstrap = async () => {
     const app = (0, express_1.default)();
     const port = Number(process.env.PORT) || 5000;
@@ -30,6 +31,15 @@ const bootstrap = async () => {
     });
     app.use("/auth", auth_controller_1.default);
     app.use("/user", user_controller_1.default);
+    app.get("/upload/signed/*path", async (req, res) => {
+        const { path } = req.params;
+        if (!path?.length) {
+            throw new error_response_1.BadRequestException("Fail to Get URL");
+        }
+        const Key = path.join("/");
+        const url = await (0, s3_config_js_1.createGetPreSignedLink)({ Key });
+        return res.json({ url });
+    });
     app.all("{/*dummy}", (req, res) => {
         return res.status(404).json({
             message: "Invalid App Routing please check the method and url ❌",

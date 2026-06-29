@@ -4,6 +4,7 @@ const user_repository_js_1 = require("../../DB/repository/user.repository.js");
 const User_model_js_1 = require("../../DB/models/User.model.js");
 const token_security_js_1 = require("../../utils/security/token.security.js");
 const s3_config_js_1 = require("../../utils/multer/s3.config.js");
+const error_response_js_1 = require("../../utils/response/error.response.js");
 class UserService {
     userModel = new user_repository_js_1.UserRepository(User_model_js_1.UserModel);
     constructor() { }
@@ -17,11 +18,23 @@ class UserService {
         });
     };
     profileImage = async (req, res) => {
-        const key = await (0, s3_config_js_1.uploadFile)({
-            file: req.file,
+        const { ContentType, originalname, } = req.body;
+        const { url, key } = await (0, s3_config_js_1.createUploadPreSignedLink)({
+            ContentType,
+            originalname,
             path: `users/${req.decoded?._id}`,
         });
-        return res.json({ message: "Done", data: { key } });
+        const user = await this.userModel.findByIdAndUpdate({
+            id: req.user?._id,
+            update: {
+                $set: {
+                    profileImage: key,
+                },
+            },
+        });
+        if (!user)
+            throw new error_response_js_1.BadRequestException("Fail to update user profile image");
+        return res.json({ message: "Done", data: { url, key } });
     };
     logout = async (req, res) => {
         const { flag } = req.body;

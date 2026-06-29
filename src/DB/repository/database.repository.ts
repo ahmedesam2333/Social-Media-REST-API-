@@ -8,6 +8,7 @@ import {
   ProjectionType,
   QueryFilter,
   QueryOptions,
+  Types,
   UpdateQuery,
   UpdateWriteOpResult,
 } from "mongoose";
@@ -60,6 +61,22 @@ export abstract class DatabaseRepository<TDocument> {
   }): Promise<UpdateWriteOpResult> {
     return await this.model.updateOne(
       filter,
+      { ...update, $inc: { __v: 1 } },
+      options,
+    );
+  }
+
+  async findByIdAndUpdate({
+    id,
+    update,
+    options = { returnDocument: "after" },
+  }: {
+    id: Types.ObjectId;
+    update?: UpdateQuery<TDocument>;
+    options?: QueryOptions<TDocument> | null;
+  }): Promise<HydratedDocument<TDocument> | Lean<TDocument> | null> {
+    return await this.model.findByIdAndUpdate(
+      id,
       { ...update, $inc: { __v: 1 } },
       options,
     );
